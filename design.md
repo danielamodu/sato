@@ -1,43 +1,40 @@
-# Sato — Design Direction
+# Sato — Design Direction v2
 
 ## Product Identity
 Sato is a Bitcoin-native payment app built on Stacks that lets people send sBTC by username, earn yield on balances, and cash out to local currency.
 
-The coming-soon page should feel calm, premium, and familiar rather than crypto-native or speculative. The first emotion is comfort: this feels like money people already know how to use.
+The page should feel like a premium consumer fintech product: calm, credible, modern, and already thought through. The first emotion is confidence: this is Bitcoin payment UX that people can understand and trust.
 
-## Three Creative Directions
+## Benchmark Synthesis
+The reviewed references consistently use a modern grotesk, product UI as evidence, layered surfaces, focused calls to action, explicit state/context, and restrained motion. Liquid and Atoma demonstrate staged hero entrance and depth. Jeton and Titan show trust and audience clarity. Increase and Aave show state-based product UI and visible context. Kinetics and Transitions.dev reinforce short, origin-aware, reduced-motion-safe state transitions.
 
-### 1. Quiet Signal — selected
-A warm editorial canvas with oversized serif typography, black-and-white surfaces, and a precise Stacks-orange signal used only for status, links, and small moments of movement. The layout is asymmetrical and quiet: a text-led hero paired with a soft, phone-like balance vignette, then a horizontal story of three everyday actions. It fits consumers and merchants because it communicates trust and ease before technology.
+Do not transfer trading-terminal density, speculative metrics, fake live activity, crypto jargon, persistent glows, or decorative motion. Sato’s coming-soon page should show illustrative payment states clearly labeled as previews.
 
-### 2. Pocket Ledger
-A highly tactile, receipt-inspired direction using narrow mono labels, ledger rules, transaction snippets, and a paper-like surface. The hero would feel like a beautifully typeset financial statement. It is memorable and credible, but slightly more finance-insider than the desired mass-market familiarity.
-
-### 3. Orange Afterimage
-A dark, cinematic direction with a mostly-black canvas, white type, and a bright orange navigation thread that traces the path from sender to receiver. It would feel more Bitcoin-native and energetic, but risks over-indexing on crypto atmosphere instead of comfort and everyday adoption.
+## Visual Direction — Pocket Finance
+A dark navy app shell sits inside a warm off-white canvas. The hero is a two-column product composition: plain-language promise and waitlist CTA on the left; a floating Sato payment workspace on the right with a consumer send card, merchant paid receipt, balance summary, and confirmation state. The brand orange is reserved for action and status. Rounded surfaces, compact labels, and a restrained grid make the page feel like a fintech product rather than an editorial campaign.
 
 ## Visual Language
-- Aesthetic: editorial finance with soft, tactile restraint.
-- Display type: Fraunces, high-contrast serif for warmth and memorability.
-- Body type: Manrope, humanist sans for clear product copy.
-- Mono type: IBM Plex Mono for labels and data moments.
-- Palette: ink #111110, paper #f4f1eb, white #fffdfa, warm gray #d9d4ca, Stacks orange #f15a24.
-- Texture: subtle paper grain, thin rules, soft shadows, no glassmorphism.
-- Motion: 180–650ms entrance sequence, gentle hover lift, orange signal pulse, reduced-motion fallback.
+- Aesthetic: premium consumer fintech / product-led web3.
+- Typography: Manrope for display and body, IBM Plex Mono for compact state labels.
+- Palette: warm off-white #f5f4ef, near-black navy #0d1117, elevated navy #151c26, blue-gray #8c98aa, orange #f15a24, mint #a8e7c4.
+- Surfaces: 16–24px radii, soft shadows, thin low-contrast borders, no glassmorphism.
+- Product UI: payment amount, recipient identity, fiat equivalent, fee line, confirmation status, merchant receipt.
+- Motion: 120–280ms interaction states, 600–800ms staged entrance, one payment-state transition, subtle ambient glow, reduced-motion fallback.
 
 ## User Flow
-Hero communicates the value proposition and points to the waitlist. Features establish the three practical benefits. The waitlist closes the page with one email field and low-friction confirmation.
+Hero establishes product promise and a single CTA. The app preview demonstrates send-to-username and merchant confirmation. The benefits section explains send, earn, and cash out. The final section captures the waitlist with a low-friction email field.
+
+## Trust Signals
+Use only honest prelaunch signals: Built on Bitcoin · Powered by Stacks, clear preview labeling, no wallet-address friction, visible amount/fee context, and plain-language product copy. Do not claim security certifications, users, partners, or live balances unless verified.
 
 ## Screen Inventory
 1. Single coming-soon landing page
-   - Header
-   - Hero
-   - Three benefits
+   - Product header
+   - Product-led hero
+   - App preview workspace
+   - Three benefit cards
    - Waitlist signup
    - Footer
 
 ## Copy Voice
-Relatable, plainspoken, confident, and specific. Avoid crypto jargon, vague startup language, and overpromising.
-
-## Constraints
-Use the supplied Sato logo. Keep the experience responsive, keyboard accessible, fast, and frontend-only for this coming-soon version.
+Relatable, crisp, confident, and specific. Avoid editorial flourish, crypto jargon, speculative finance language, and startup filler.
