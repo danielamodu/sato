@@ -22,6 +22,7 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [consentVisible, setConsentVisible] = useState(false);
+  const [activeSection, setActiveSection] = useState("product");
 
   useEffect(() => {
     setConsentVisible(window.localStorage.getItem("sato-cookie-consent") !== "set");
@@ -36,6 +37,23 @@ export default function Home() {
     }, { threshold: 0.14, rootMargin: "0px 0px -8% 0px" });
     revealItems.forEach((item) => observer.observe(item));
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const sections = ["product", "why-sato", "trust", "waitlist"];
+    const updateActiveSection = () => {
+      const marker = window.scrollY + window.innerHeight * 0.35;
+      let current = "product";
+      sections.forEach((id) => {
+        const section = document.getElementById(id);
+        if (section && section.offsetTop <= marker) current = id;
+      });
+      setActiveSection(current);
+    };
+    updateActiveSection();
+    window.addEventListener("scroll", updateActiveSection, { passive: true });
+    window.addEventListener("resize", updateActiveSection);
+    return () => { window.removeEventListener("scroll", updateActiveSection); window.removeEventListener("resize", updateActiveSection); };
   }, []);
 
   function saveConsent() {
@@ -53,12 +71,12 @@ export default function Home() {
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span><span className="brand-name">sato</span></a>
         <nav className="top-links" aria-label="Audience navigation">
-          <a href="#product">For people</a><a href="#waitlist">For businesses</a><a href="mailto:team.satofinance@gmail.com">Company</a><a className="top-login" href="mailto:team.satofinance@gmail.com">Contact</a><a className="top-signup" href="#waitlist">Sign up <ArrowUpRight size={13} /></a>
+          <a href="/people">For people</a><a href="/businesses">For businesses</a><a href="mailto:team.satofinance@gmail.com">Company</a><a className="top-login" href="mailto:team.satofinance@gmail.com">Contact</a><a className="top-signup" href="#waitlist">Sign up <ArrowUpRight size={13} /></a>
         </nav>
         <button className="menu-toggle" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={19} /> : <Menu size={19} />}</button>
       </header>
 
-      <nav className={menuOpen ? "floating-dock dock-open" : "floating-dock"} aria-label="Main navigation"><a className="dock-brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span></a><a href="#product" onClick={() => setMenuOpen(false)}>Product</a><a href="#why-sato" onClick={() => setMenuOpen(false)}>Why Sato</a><a href="#trust" onClick={() => setMenuOpen(false)}>Trust</a><a href="#waitlist" onClick={() => setMenuOpen(false)}>For merchants</a><a className="dock-cta" href="#waitlist" onClick={() => setMenuOpen(false)}>Get started <ArrowRight size={14} /></a></nav>
+      <nav className={menuOpen ? "floating-dock dock-open" : "floating-dock"} aria-label="Main navigation"><a className="dock-brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span></a><a className={activeSection === "product" ? "dock-link active" : "dock-link"} href="#product" onClick={() => setMenuOpen(false)}>Product</a><a className={activeSection === "why-sato" ? "dock-link active" : "dock-link"} href="#why-sato" onClick={() => setMenuOpen(false)}>Why Sato</a><a className={activeSection === "trust" ? "dock-link active" : "dock-link"} href="#trust" onClick={() => setMenuOpen(false)}>Trust</a><a className={activeSection === "waitlist" ? "dock-link active" : "dock-link"} href="#waitlist" onClick={() => setMenuOpen(false)}>For merchants</a><a className="dock-cta" href="#waitlist" onClick={() => setMenuOpen(false)}>Get started <ArrowRight size={14} /></a></nav>
 
       <main id="top">
         <section className="hero section-pad" id="product">

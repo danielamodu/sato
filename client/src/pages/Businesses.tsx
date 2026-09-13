@@ -1,0 +1,3 @@
+import AudiencePage from "./AudiencePage";
+
+export default function Businesses() { return <AudiencePage eyebrow="For businesses" title={<>Get paid<br /><span>like it’s easy.</span></>} intro="Give customers a familiar way to pay and your team a simpler way to track what arrived. Sato is building Bitcoin payments for the real world." bullets={["Create a recognizable payment identity customers can find by @username.","Give customers clear amounts, currency context, and confirmation states.","Make reconciliation easier with receipts designed for both sides."]} cta="Join the business waitlist" />; }
