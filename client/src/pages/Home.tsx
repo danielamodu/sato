@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronRight, CircleDollarSign, Menu, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronDown, ChevronRight, CircleDollarSign, Menu, ShieldCheck, Sparkles, X } from "lucide-react";
 
 const logoSrc = "/manus-storage/sato-logo_570c63a5.png";
 
@@ -9,10 +9,18 @@ const features = [
   { icon: Banknote, label: "Off-ramp", title: "Cash out when you need it", body: "Move from Bitcoin to your local currency and back to your bank, on your terms." },
 ];
 
+const faqs = [
+  { question: "Who holds my money?", answer: "Sato is being designed around clear control and visibility. Before launch, we’ll explain exactly how balances are held, what Sato can and cannot access, and what your recovery options are. We won’t ask you to take custody claims on trust." },
+  { question: "What does a payment cost?", answer: "You’ll see the amount, any Sato fee, and any network or conversion cost before you confirm. The final fee model and supported currencies will be published before invitations open." },
+  { question: "How long do payments take to settle?", answer: "Sato will show a clear payment state—from sending to confirmed—so you know what has happened. Timing can depend on the Bitcoin and Stacks networks, the recipient, and the local-currency rail used for cash out." },
+  { question: "Where will Sato be available?", answer: "Availability depends on local-currency partners and regional requirements. Join the waitlist and tell us where you’re based so we can share launch updates for your region first." },
+];
+
 export default function Home() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -63,6 +71,8 @@ export default function Home() {
         </section>
 
         <section className="steps-section section-pad"><div className="steps-heading"><span className="section-kicker">How it works</span><h2>From <span>@username</span><br />to <strong>done.</strong></h2></div><div className="steps-track"><div className="step active"><span>01</span><div className="step-icon"><AtSign size={21} /></div><strong>Choose who to pay</strong><p>Find a person or business by @username.</p></div><div className="step"><span>02</span><div className="step-icon"><ArrowRight size={21} /></div><strong>Set the amount</strong><p>See Bitcoin and local currency together.</p></div><div className="step"><span>03</span><div className="step-icon"><Check size={21} /></div><strong>Payment confirmed</strong><p>Both sides get a clear receipt.</p></div></div></section>
+
+        <section className="trust-section section-pad" id="trust"><div className="trust-heading"><span className="section-kicker">Before you join</span><h2>Clear answers<br />build trust.</h2><p>Money products should be direct about what happens behind the button. Here’s what we can say now—and what we’ll publish before launch.</p></div><div className="trust-content"><div className="trust-grid"><div className="trust-card"><ShieldCheck size={20} /><strong>Visible by design</strong><p>Amount, currency, fees, and status stay in view before you confirm.</p></div><div className="trust-card"><Check size={20} /><strong>No hidden steps</strong><p>We’ll explain custody, settlement, and regional availability in plain language.</p></div></div><div className="faq-list">{faqs.map((faq, index) => { const isOpen = openFaq === index; return <div className={isOpen ? "faq-item faq-open" : "faq-item"} key={faq.question}><button className="faq-trigger" aria-expanded={isOpen} onClick={() => setOpenFaq(isOpen ? null : index)}><span>{faq.question}</span><ChevronDown size={17} /></button><div className="faq-answer"><p>{faq.answer}</p></div></div>; })}</div></div></section>
 
         <section className="waitlist-section section-pad" id="waitlist"><div className="waitlist-inner"><div><div className="status-label light"><span className="status-pulse" /> Now building</div><h2>Be first<br />in line.</h2><p>Join the early access list. We’ll share the first invite when Sato is ready in your region.</p></div><div className="waitlist-panel">{submitted ? <div className="success-message"><span><Check size={17} /></span><div><strong>You’re on the list.</strong><small>We’ll be in touch when Sato is ready.</small></div></div> : <form className="waitlist-form" onSubmit={handleSubmit}><label htmlFor="email">Email address</label><div className="input-row"><input id="email" type="email" required placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /><button type="submit" aria-label="Join the Sato waitlist"><ArrowRight size={19} /></button></div><small>One useful email. No noise.</small></form>}<div className="audience-note"><span>For people</span><span>For businesses</span><span>Built on Bitcoin</span></div></div></div></section>
       </main>
