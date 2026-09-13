@@ -13,7 +13,7 @@ export default function LegalPage({ eyebrow, title, intro, updated, sections }: 
   return (
     <div className="legal-shell">
       <header className="site-header legal-header">
-        <Link className="brand" href="/" aria-label="Sato home"><span className="brand-mark"><img src="/manus-storage/sato-logo_570c63a5.png" alt="" /></span><span className="brand-name">sato</span></Link>
+        <Link className="brand" href="/" aria-label="Sato home"><span className="brand-mark"><img src="/assets/sato-logo.png" alt="" /></span><span className="brand-name">sato</span></Link>
         <Link className="legal-back" href="/"><ArrowLeft size={15} /> Back to Sato</Link>
       </header>
       <main className="legal-main section-pad">
@@ -25,7 +25,7 @@ export default function LegalPage({ eyebrow, title, intro, updated, sections }: 
         </div>
         <div className="legal-notice"><strong>Placeholder notice</strong><p>This page is an early content placeholder, not a final legal document. Sato will publish reviewed policies and terms before the product becomes available.</p></div>
       </main>
-      <footer className="site-footer section-pad"><Link className="brand" href="/"><span className="brand-mark"><img src="/manus-storage/sato-logo_570c63a5.png" alt="" /></span><span className="brand-name">sato</span></Link><p>© 2026 Sato. Built on Bitcoin.</p></footer>
+      <footer className="site-footer section-pad"><Link className="brand" href="/"><span className="brand-mark"><img src="/assets/sato-logo.png" alt="" /></span><span className="brand-name">sato</span></Link><p>© 2026 Sato. Built on Bitcoin.</p></footer>
     </div>
   );
 }

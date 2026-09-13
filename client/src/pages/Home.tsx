@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronDown, ChevronRight, CircleDollarSign, Cookie, Mail, Menu, ShieldCheck, Sparkles, X } from "lucide-react";
 
-const logoSrc = "/manus-storage/sato-logo_570c63a5.png";
+const logoSrc = "/assets/sato-logo.png";
 
 const features = [
   { icon: AtSign, label: "Payments", title: "Send to @anyone", body: "Skip the wallet address. Find a person or business by username and send in a few taps." },
