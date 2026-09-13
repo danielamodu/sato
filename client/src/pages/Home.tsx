@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronDown, ChevronRight, CircleDollarSign, Menu, ShieldCheck, Sparkles, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronDown, ChevronRight, CircleDollarSign, Cookie, Mail, Menu, ShieldCheck, Sparkles, X } from "lucide-react";
 
 const logoSrc = "/manus-storage/sato-logo_570c63a5.png";
 
@@ -21,6 +21,16 @@ export default function Home() {
   const [submitted, setSubmitted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [consentVisible, setConsentVisible] = useState(false);
+
+  useEffect(() => {
+    setConsentVisible(window.localStorage.getItem("sato-cookie-consent") !== "set");
+  }, []);
+
+  function saveConsent() {
+    window.localStorage.setItem("sato-cookie-consent", "set");
+    setConsentVisible(false);
+  }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,7 +86,8 @@ export default function Home() {
 
         <section className="waitlist-section section-pad" id="waitlist"><div className="waitlist-inner"><div><div className="status-label light"><span className="status-pulse" /> Now building</div><h2>Be first<br />in line.</h2><p>Join the early access list. We’ll share the first invite when Sato is ready in your region.</p></div><div className="waitlist-panel">{submitted ? <div className="success-message"><span><Check size={17} /></span><div><strong>You’re on the list.</strong><small>We’ll be in touch when Sato is ready.</small></div></div> : <form className="waitlist-form" onSubmit={handleSubmit}><label htmlFor="email">Email address</label><div className="input-row"><input id="email" type="email" required placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /><button type="submit" aria-label="Join the Sato waitlist"><ArrowRight size={19} /></button></div><small>One useful email. No noise.</small></form>}<div className="audience-note"><span>For people</span><span>For businesses</span><span>Built on Bitcoin</span></div></div></div></section>
       </main>
-      <footer className="site-footer section-pad"><a className="brand" href="#top"><span className="brand-mark"><img src={logoSrc} alt="" /></span><span className="brand-name">sato</span></a><div className="footer-links"><a href="#product">Product</a><a href="#why-sato">Why Sato</a><a href="#waitlist">Early access</a></div><p>© 2026 Sato. Built on Bitcoin.</p></footer>
+      <footer className="site-footer section-pad"><a className="brand" href="#top"><span className="brand-mark"><img src={logoSrc} alt="" /></span><span className="brand-name">sato</span></a><div className="footer-links"><a href="#product">Product</a><a href="#why-sato">Why Sato</a><a href="#waitlist">Early access</a><a href="/security">Security</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div><div className="footer-social"><a href="mailto:team.satofinance@gmail.com" aria-label="Email Sato"><Mail size={14} /> Email</a><a href="https://x.com/satofinance" target="_blank" rel="noreferrer" aria-label="Sato on X">𝕏 <span>@satofinance</span></a></div><p>© 2026 Sato. Built on Bitcoin.</p></footer>
+      {consentVisible && <aside className="consent-banner" role="dialog" aria-label="Cookie and analytics preferences"><div className="consent-icon"><Cookie size={18} /></div><div className="consent-copy"><strong>Privacy, without the fine print.</strong><p>We use essential storage to remember your preferences. Optional analytics help us understand what makes Sato clearer. Nothing is enabled until you choose.</p><div className="consent-links"><a href="/privacy">Privacy policy <ArrowUpRight size={12} /></a><span>·</span><a href="/terms">Terms <ArrowUpRight size={12} /></a></div></div><div className="consent-actions"><button className="consent-secondary" onClick={saveConsent}>Only essential</button><button className="consent-primary" onClick={saveConsent}>Allow analytics <ArrowRight size={14} /></button></div></aside>}
     </div>
   );
 }
