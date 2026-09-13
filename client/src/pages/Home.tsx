@@ -41,11 +41,13 @@ export default function Home() {
     <div className="site-shell">
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span><span className="brand-name">sato</span></a>
-        <nav className={menuOpen ? "nav-links nav-open" : "nav-links"} aria-label="Main navigation">
-          <a href="#product" onClick={() => setMenuOpen(false)}>Product</a><a href="#why-sato" onClick={() => setMenuOpen(false)}>Why Sato</a><a href="#trust" onClick={() => setMenuOpen(false)}>Trust</a><a href="#waitlist" onClick={() => setMenuOpen(false)}>For merchants</a><a className="nav-cta" href="#waitlist" onClick={() => setMenuOpen(false)}>Get started <ArrowRight size={14} /></a>
+        <nav className="top-links" aria-label="Audience navigation">
+          <a href="#product">For people</a><a href="#waitlist">For businesses</a><a href="mailto:team.satofinance@gmail.com">Company</a><a className="top-login" href="mailto:team.satofinance@gmail.com">Contact</a><a className="top-signup" href="#waitlist">Sign up <ArrowUpRight size={13} /></a>
         </nav>
         <button className="menu-toggle" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={19} /> : <Menu size={19} />}</button>
       </header>
+
+      <nav className={menuOpen ? "floating-dock dock-open" : "floating-dock"} aria-label="Main navigation"><a className="dock-brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span></a><a href="#product" onClick={() => setMenuOpen(false)}>Product</a><a href="#why-sato" onClick={() => setMenuOpen(false)}>Why Sato</a><a href="#trust" onClick={() => setMenuOpen(false)}>Trust</a><a href="#waitlist" onClick={() => setMenuOpen(false)}>For merchants</a><a className="dock-cta" href="#waitlist" onClick={() => setMenuOpen(false)}>Get started <ArrowRight size={14} /></a></nav>
 
       <main id="top">
         <section className="hero section-pad" id="product">
