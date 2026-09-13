@@ -66,3 +66,7 @@ html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}button,a{touch-action:
 /* Keep the desktop notice clear of the fixed dock */
 .consent-banner{right:24px;bottom:96px;max-width:520px}
 @media(max-width:800px){.consent-banner{right:14px;bottom:82px;max-width:none}}
+
+/* Keep the full mobile hero readable and prevent the preview from spilling into the CTA area */
+@media(max-width:800px){.hero{min-height:auto;overflow:visible;padding-top:28px;padding-bottom:128px;gap:28px}.hero-copy{min-height:0}.product-stage{min-height:380px;margin-top:0;overflow:visible}.app-window{transform:none;animation:none}.stage-caption{display:none}.merchant-toast{right:0;bottom:18px}}
+@media(max-width:560px){.hero{padding-top:22px;padding-bottom:128px;gap:24px}.product-stage{min-height:350px}.app-window{width:100%;max-width:100%;border-radius:16px}.merchant-toast{right:0;bottom:16px;transform:scale(.78);transform-origin:right bottom}}
