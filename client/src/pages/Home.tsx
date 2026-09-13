@@ -25,6 +25,17 @@ export default function Home() {
 
   useEffect(() => {
     setConsentVisible(window.localStorage.getItem("sato-cookie-consent") !== "set");
+    const revealItems = document.querySelectorAll<HTMLElement>(".reveal");
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("in-view");
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.14, rootMargin: "0px 0px -8% 0px" });
+    revealItems.forEach((item) => observer.observe(item));
+    return () => observer.disconnect();
   }, []);
 
   function saveConsent() {
