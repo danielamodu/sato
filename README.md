@@ -45,6 +45,15 @@ Handles send, balance tracking, and transfer events.
 Production version will integrate with the canonical sBTC token contract:
 `SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token`
 
+## Live Contracts (Stacks Testnet)
+
+| Contract | Explorer |
+|----------|---------|
+| `sato-transfer` | [View on Explorer](https://explorer.hiro.so/txid/ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV.sato-transfer?chain=testnet) |
+| `sato-names` | [View on Explorer](https://explorer.hiro.so/txid/ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV.sato-names?chain=testnet) |
+
+Deployer: `ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV`
+
 ## Get early access
 
 satofinance.vercel.app
