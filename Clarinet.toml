@@ -1,0 +1,14 @@
+[project]
+name = "sato"
+description = "Sato - Bitcoin payment app on Stacks (sBTC transfers)"
+authors = []
+telemetry = false
+cache_dir = "./.cache"
+
+[contracts.sato-transfer]
+path = "contracts/sato-transfer.clar"
+clarity_version = 3
+epoch = "3.4"
+
+[repl.analysis]
+passes = ["check_checker"]
