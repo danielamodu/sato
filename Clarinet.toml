@@ -10,5 +10,15 @@ path = "contracts/sato-transfer.clar"
 clarity_version = 3
 epoch = "3.4"
 
+[contracts.sato-names]
+path = "contracts/sato-names.clar"
+clarity_version = 3
+epoch = "3.4"
+
+[contracts.sato-sponsor]
+path = "contracts/sato-sponsor.clar"
+clarity_version = 3
+epoch = "3.4"
+
 [repl.analysis]
 passes = ["check_checker"]
