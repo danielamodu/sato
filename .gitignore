@@ -14,6 +14,11 @@ build/
 .env.test.local
 .env.production.local
 
+# Clarinet network settings that hold real mnemonics — never commit
+# testnet/mainnet secrets. Devnet.toml uses public defaults and is fine.
+settings/Testnet.toml
+settings/Mainnet.toml
+
 # IDE and editor files
 .vscode/
 .idea/
