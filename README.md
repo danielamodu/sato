@@ -1,61 +1,54 @@
-# Sato — Bitcoin Payment App (sBTC transfers)
+# Sato
 
-Sato is a Clarity smart contract for sending sBTC between Stacks principals.
+Bitcoin payments for everyone.
 
-## Structure
+Sato is a Bitcoin-native mobile payment app built on Stacks. 
+Send sBTC to anyone by @username, earn yield on your balance, 
+and cash out to your local currency — no wallet addresses, 
+no gas complexity, no crypto knowledge required.
 
-```text
-sato/
-├── contracts/
-│   └── sato-transfer.clar
-├── tests/
-│   └── sato-transfer.test.ts
-├── settings/
-│   └── Devnet.toml
-├── Clarinet.toml
-├── package.json
-├── vitest.config.ts
-├── tsconfig.json
-└── README.md
-```
+## What we're building
 
-## Contract: `sato-transfer`
+- **Send by @username** — no wallet addresses, just @username and done
+- **Earn on your balance** — idle sBTC earns yield automatically via sBTC/PoX integration
+- **Cash out anytime** — withdraw to local currency via Yellow Card API
+- **Sponsored transactions** — users never touch gas fees
+- **Social login** — sign in with Google or X, wallet created in the background
 
-### Errors
+Built on Stacks. Powered by sBTC.
 
-| Constant | Code | Meaning |
-|---|---|---|
-| `ERR_INSUFFICIENT_BALANCE` | `(err u100)` | Sender balance < amount |
-| `ERR_INVALID_AMOUNT` | `(err u101)` | Amount is zero |
-| `ERR_SELF_TRANSFER` | `(err u102)` | Sender == recipient |
+## Status
 
-### Functions
+🔨 Active development — not yet live.
 
-- `(send (recipient principal) (amount uint))` — validate amount > 0, sender != recipient, and sufficient balance; move balances; emit `{event: "sbtc-transfer", sender, recipient, amount}` via `print`; returns `(ok true)`.
-- `(mint (recipient principal) (amount uint))` — test/devnet helper to fund an account.
-- `(deposit (amount uint))` — credit the caller's own balance (simulates wrapping sBTC).
-- `(get-balance (who principal))` — read-only sBTC balance.
-- `(get-total-supply)` — read-only total custodied.
+- [x] Landing page — satofinance.vercel.app
+- [x] Clarity smart contract for sBTC transfers
+- [ ] Username registration via Stacks Name Service
+- [ ] Sponsored transaction infrastructure
+- [ ] React Native mobile app
+- [ ] Yellow Card API integration (Naira onramp/offramp)
+- [ ] iOS and Android launch
 
-### Mainnet note
+## Tech stack
 
-This contract tracks sBTC in its own ledger for local testing. For mainnet,
-replace `mint`/`deposit` with a SIP-010 `contract-call?` into the canonical
-sBTC contract (`SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token`).
+- **Contracts** — Clarity on Stacks
+- **Mobile** — React Native (iOS + Android)
+- **Auth** — Privy (embedded wallets + social login)
+- **Identity** — Stacks Name Service (SNS)
+- **Onramp/Offramp** — Yellow Card API
+- **Backend** — Node.js + Supabase
 
-## Development
+## Contracts
 
-Requires [Clarinet](https://docs.hiro.so/clarinet/introduction).
+`contracts/sato-transfer.clar` — Core sBTC transfer contract.
+Handles send, balance tracking, and transfer events.
+Production version will integrate with the canonical sBTC token contract:
+`SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token`
 
-```bash
-clarinet check
-clarinet test
-```
+## Get early access
 
-JS tests use the Clarinet simnet (`simnet.callPublicFn` / `simnet.callReadOnlyFn`)
-with `vitest`. Install dev dependencies first if `package.json` is present:
+satofinance.vercel.app
 
-```bash
-npm install
-npm test
-```
+---
+
+Building in public. Follow along: @satofinance
