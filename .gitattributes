@@ -1,0 +1,11 @@
+# Clarity contracts must use LF line endings — the Clarity parser
+# rejects CRLF ("unsupported line-ending '\r'"). Pin them regardless
+# of the user's core.autocrlf setting.
+*.clar text eol=lf
+
+# Clarinet / project config and test tooling also expect LF.
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
