@@ -17,15 +17,25 @@ no gas complexity, no crypto knowledge required.
 
 Built on Stacks. Powered by sBTC.
 
-## Status
+## Status & Roadmap
 
-🔨 Active development — not yet live.
+🔨 Active development — building in public.
 
+**Phase 1 — On-chain foundation (shipped, live on testnet)**
 - [x] Landing page — satofinance.vercel.app
-- [x] Clarity smart contract for sBTC transfers
-- [ ] Username registration via Stacks Name Service
-- [ ] Sponsored transaction infrastructure
-- [ ] React Native mobile app
+- [x] `sato-transfer` — sBTC transfer contract (send, balances, events)
+- [x] `sato-names` — username registry (register, resolve, reverse lookup, transfer)
+- [x] `sato-sponsor` — sponsored-tx pool with windowed per-user caps
+- [x] Full test suite (38 tests) + deployed & verified on Stacks testnet
+
+**Phase 2 — Product integration (next / grant-funded)**
+- [ ] Wallet connect + end-to-end dapp flow (register → resolve → send)
+- [ ] Swap `sato-transfer` ledger for the canonical sBTC SIP-010 contract
+- [ ] Yield on balance via sBTC/PoX integration
+- [ ] Social login with embedded wallets (Privy)
+
+**Phase 3 — Mobile & fiat (later)**
+- [ ] React Native mobile app (iOS + Android)
 - [ ] Yellow Card API integration (Naira onramp/offramp)
 - [ ] iOS and Android launch
 
@@ -53,6 +63,17 @@ Production version will integrate with the canonical sBTC token contract:
 | `sato-names` | [View on Explorer](https://explorer.hiro.so/txid/ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV.sato-names?chain=testnet) |
 
 Deployer: `ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV`
+
+## Development
+
+```bash
+npm install
+npm test        # runs the Clarity test suite (38 tests) via Clarinet + Vitest
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE). Sato is open source.
 
 ## Get early access
 
