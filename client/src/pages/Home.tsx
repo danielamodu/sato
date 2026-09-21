@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronDown, ChevronRight, CircleDollarSign, Cookie, Mail, Menu, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronDown, ChevronRight, CircleDollarSign, Cookie, Mail, Menu, ShieldCheck, X } from "lucide-react";
 
 const logoSrc = "/assets/sato-logo.png";
 
@@ -84,7 +84,7 @@ export default function Home() {
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span><span className="brand-name">sato</span></a>
         <nav className="top-links" aria-label="Audience navigation">
-          <a href="/people">For people</a><a href="/businesses">For businesses</a><a href="mailto:team.satofinance@gmail.com">Company</a><a className="top-login" href="mailto:team.satofinance@gmail.com">Contact</a><a className="top-signup" href="#waitlist">Sign up <ArrowUpRight size={13} /></a>
+          <a href="/people">For people</a><a href="/businesses">For businesses</a><a href="/app">Testnet app</a><a className="top-login" href="mailto:team.satofinance@gmail.com">Contact</a><a className="top-signup" href="#waitlist">Sign up <ArrowUpRight size={13} /></a>
         </nav>
         <button className="menu-toggle" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={19} /> : <Menu size={19} />}</button>
       </header>
@@ -96,8 +96,7 @@ export default function Home() {
           <div className="hero-copy reveal reveal-one">
             <h1>Bitcoin payments<br /><span>that feel human.</span></h1>
             <p className="hero-lede">Send to <strong>@anyone</strong>, earn on your balance, and cash out to your local currency. Sato puts everyday money movement in one simple place.</p>
-            <div className="hero-actions"><a className="primary-button" href="#waitlist">Get early access <ArrowRight size={17} /></a><a className="text-link" href="#why-sato">See how it works <ChevronRight size={15} /></a></div>
-            <div className="trust-row"><span><ShieldCheck size={15} /> No wallet addresses</span><span><Sparkles size={14} /> Made for everyday use</span></div>
+            <div className="hero-actions"><a className="primary-button" href="#waitlist">Get early access <ArrowRight size={17} /></a><a className="text-link" href="/app">Try the live testnet app <ArrowUpRight size={15} /></a><a className="text-link" href="#why-sato">See how it works <ChevronRight size={15} /></a></div>
           </div>
 
           <div className="product-stage reveal reveal-two" aria-label="Illustrative Sato product preview">
@@ -112,7 +111,6 @@ export default function Home() {
               </div>
             </div>
             <div className="merchant-toast"><span className="merchant-icon"><Check size={15} /></span><span><small>Merchant preview</small><strong>Payment received</strong></span><b>₿ 0.012</b></div>
-            <div className="stage-caption"><span className="caption-line" /> An everyday money app<br />for a Bitcoin world.</div>
           </div>
         </section>
 
