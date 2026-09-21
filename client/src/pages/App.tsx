@@ -1,17 +1,28 @@
-// App.tsx — the Sato dapp demo, wired to live testnet contracts.
+// App.tsx — the Sato dapp, wired to live testnet contracts.
 //
-// End-to-end flow a reviewer can click:
-//   connect wallet -> register @username -> look someone up -> send sBTC
-//   -> watch the balance change.
+// A calm app-shell dashboard: left sidebar for navigation + account, a
+// main column with one view at a time (Overview, Send, Activity). The
+// goal is comfort — one clear number, plain language, generous space,
+// the orange accent used sparingly. This web layout sets the visual
+// precedent for the mobile app (sidebar collapses to a bottom tab bar).
 //
 // Reads (balance, name lookups) hit the testnet API directly. Writes
-// (register, send, faucet) go through the connected wallet and open the
-// explorer on submit. Styled with Sato's own palette so it matches the
-// landing page (the shadcn primitives aren't themed in this project).
+// (register, send, faucet) go through the connected wallet and surface
+// an explorer link on submit.
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AtSign, Wallet, Send, Search, Coins, ExternalLink } from "lucide-react";
+import {
+  Wallet,
+  Send,
+  Search,
+  LayoutGrid,
+  Receipt,
+  ArrowUpRight,
+  Plus,
+  Check,
+  LogOut,
+} from "lucide-react";
 import { StacksProvider, useStacks } from "@/contexts/StacksContext";
 import {
   registerName,
@@ -23,27 +34,31 @@ import {
 } from "@/lib/sato";
 
 const short = (a: string) => `${a.slice(0, 5)}…${a.slice(-4)}`;
-const sats = (n: bigint) => `${n.toLocaleString()} sats`;
+const fmt = (n: bigint) => n.toLocaleString();
 const explorerTx = (txid: string) =>
   `https://explorer.hiro.so/txid/${txid}?chain=testnet`;
+const explorerAddr = (a: string) =>
+  `https://explorer.hiro.so/address/${a}?chain=testnet`;
 
 // Pull a txid out of the varied shapes @stacks/connect can return.
 function txidOf(res: any): string | undefined {
   return res?.txid ?? res?.txId ?? res?.result?.txid;
 }
 
+type View = "overview" | "send" | "activity";
+
 function SatoApp() {
   const { address, isConnecting, connectWallet, disconnectWallet } = useStacks();
 
+  const [view, setView] = useState<View>("overview");
   const [myName, setMyName] = useState<string | null>(null);
   const [balance, setBalance] = useState<bigint>(0n);
   const [regInput, setRegInput] = useState("");
-  const [lookupInput, setLookupInput] = useState("");
-  const [lookupResult, setLookupResult] = useState<string | null | "pending">(
-    null
-  );
   const [sendTo, setSendTo] = useState("");
   const [sendAmount, setSendAmount] = useState("");
+  const [lookupState, setLookupState] = useState<
+    "idle" | "pending" | "found" | "missing"
+  >("idle");
   const [busy, setBusy] = useState<string | null>(null);
 
   // Refresh the connected user's name + balance.
@@ -86,16 +101,21 @@ function SatoApp() {
     }
   };
 
-  const onLookup = async () => {
-    const name = lookupInput.trim();
-    if (!name) return;
-    setLookupResult("pending");
+  // Resolve the send recipient if it's a @username (not a raw principal).
+  const onResolveRecipient = async () => {
+    const val = sendTo.trim().replace(/^@/, "");
+    if (!val || val.startsWith("S")) return; // looks like a principal already
+    setLookupState("pending");
     try {
-      const owner = await resolveName(name);
-      setLookupResult(owner);
-      if (owner) setSendTo(owner);
+      const owner = await resolveName(val);
+      if (owner) {
+        setSendTo(owner);
+        setLookupState("found");
+      } else {
+        setLookupState("missing");
+      }
     } catch {
-      setLookupResult(null);
+      setLookupState("missing");
     }
   };
 
@@ -106,7 +126,7 @@ function SatoApp() {
     try {
       const res = await sendSbtc(sendTo, amount);
       const txid = txidOf(res);
-      toast.success(`Sending ${sats(amount)}`, {
+      toast.success(`Sending ${fmt(amount)} sats`, {
         description: `to ${short(sendTo)}`,
         action: txid
           ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
@@ -138,222 +158,458 @@ function SatoApp() {
     }
   };
 
-  return (
-    <div className="sato-app">
-      <style>{appStyles}</style>
-
-      <header className="app-bar">
-        <div className="app-brand">
-          <span className="app-mark">₿</span>
-          <span className="app-name">Sato</span>
-          <span className="app-badge">testnet</span>
-        </div>
-        {address ? (
-          <div className="app-account">
-            {myName && <span className="app-handle">@{myName}</span>}
-            <button className="btn ghost" onClick={disconnectWallet}>
-              {short(address)}
-            </button>
-          </div>
-        ) : (
-          <button className="btn primary" onClick={connectWallet} disabled={isConnecting}>
-            <Wallet size={16} />
+  // --- disconnected: a calm, centered connect prompt --------------------
+  if (!address) {
+    return (
+      <div className="sato-shell disconnected">
+        <style>{shellStyles}</style>
+        <div className="connect-card">
+          <span className="brand-mark lg">₿</span>
+          <h1>Welcome to Sato</h1>
+          <p>
+            Bitcoin payments that feel human. Connect a Stacks wallet to try
+            Sato on testnet — claim a username, look someone up, and send
+            sBTC against live on-chain contracts.
+          </p>
+          <button
+            className="btn primary lg"
+            onClick={connectWallet}
+            disabled={isConnecting}
+          >
+            <Wallet size={18} />
             {isConnecting ? "Connecting…" : "Connect wallet"}
           </button>
-        )}
-      </header>
+          <span className="connect-note">
+            Testnet only · no real funds at risk
+          </span>
+        </div>
+      </div>
+    );
+  }
 
-      {!address ? (
-        <div className="app-hero">
-          <h1>Send Bitcoin by @username</h1>
-          <p>
-            Connect a Stacks wallet to try Sato on testnet — register a
-            username, look someone up, and send sBTC. All against live
-            on-chain contracts.
-          </p>
-          <button className="btn primary lg" onClick={connectWallet} disabled={isConnecting}>
-            <Wallet size={18} />
-            {isConnecting ? "Connecting…" : "Connect wallet to start"}
+  const initials = (myName ?? address).slice(0, 2).toUpperCase();
+
+  const nav: { id: View; label: string; icon: typeof LayoutGrid }[] = [
+    { id: "overview", label: "Overview", icon: LayoutGrid },
+    { id: "send", label: "Send", icon: Send },
+    { id: "activity", label: "Activity", icon: Receipt },
+  ];
+
+  return (
+    <div className="sato-shell">
+      <style>{shellStyles}</style>
+
+      {/* Sidebar */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <span className="brand-mark">₿</span>
+          <span className="brand-name">Sato</span>
+          <span className="brand-badge">testnet</span>
+        </div>
+
+        <nav className="sidebar-nav">
+          {nav.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              className={view === id ? "nav-item active" : "nav-item"}
+              onClick={() => setView(id)}
+            >
+              <Icon size={18} />
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-account">
+          <div className="account-row">
+            <span className="account-avatar">{initials}</span>
+            <span className="account-meta">
+              <strong>{myName ? `@${myName}` : "Unnamed"}</strong>
+              <small>{short(address)}</small>
+            </span>
+          </div>
+          <button className="account-signout" onClick={disconnectWallet}>
+            <LogOut size={14} /> Disconnect
           </button>
         </div>
-      ) : (
-        <main className="app-grid">
-          {/* Balance + faucet */}
-          <section className="card balance-card">
-            <div className="card-label">
-              <Coins size={15} /> Your balance
-            </div>
-            <div className="balance-value">{sats(balance)}</div>
-            <div className="card-actions">
-              <button className="btn subtle" onClick={() => refresh(address)}>
-                Refresh
-              </button>
-              <button
-                className="btn subtle"
-                onClick={onFaucet}
-                disabled={busy === "faucet"}
-              >
-                {busy === "faucet" ? "Funding…" : "Get test sBTC"}
-              </button>
-            </div>
-          </section>
+      </aside>
 
-          {/* Register username */}
-          <section className="card">
-            <div className="card-label">
-              <AtSign size={15} /> Your username
-            </div>
-            {myName ? (
-              <div className="claimed">
-                Registered as <strong>@{myName}</strong>
-              </div>
-            ) : (
-              <>
-                <div className="field">
-                  <span className="at">@</span>
-                  <input
-                    className="input"
-                    placeholder="yourname"
-                    value={regInput}
-                    maxLength={32}
-                    onChange={(e) =>
-                      setRegInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
-                    }
-                  />
-                </div>
-                <button
-                  className="btn primary full"
-                  onClick={onRegister}
-                  disabled={busy === "register" || !regInput.trim()}
-                >
-                  {busy === "register" ? "Registering…" : "Claim username"}
-                </button>
-              </>
-            )}
-          </section>
+      {/* Main column */}
+      <main className="main">
+        {view === "overview" && (
+          <Overview
+            balance={balance}
+            myName={myName}
+            regInput={regInput}
+            setRegInput={setRegInput}
+            onRegister={onRegister}
+            onFaucet={onFaucet}
+            goSend={() => setView("send")}
+            busy={busy}
+            address={address}
+          />
+        )}
 
-          {/* Lookup */}
-          <section className="card">
-            <div className="card-label">
-              <Search size={15} /> Look up a username
-            </div>
-            <div className="field">
-              <span className="at">@</span>
-              <input
-                className="input"
-                placeholder="someone"
-                value={lookupInput}
-                onChange={(e) =>
-                  setLookupInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
-                }
-                onKeyDown={(e) => e.key === "Enter" && onLookup()}
-              />
-              <button className="btn subtle" onClick={onLookup}>
-                Resolve
-              </button>
-            </div>
-            {lookupResult === "pending" && (
-              <div className="lookup muted">Looking up…</div>
-            )}
-            {lookupResult && lookupResult !== "pending" && (
-              <div className="lookup ok">
-                @{lookupInput} → <code>{short(lookupResult)}</code>
-              </div>
-            )}
-            {lookupResult === null && lookupInput && (
-              <div className="lookup miss">@{lookupInput} isn't registered</div>
-            )}
-          </section>
+        {view === "send" && (
+          <SendView
+            sendTo={sendTo}
+            setSendTo={setSendTo}
+            sendAmount={sendAmount}
+            setSendAmount={setSendAmount}
+            lookupState={lookupState}
+            setLookupState={setLookupState}
+            onResolveRecipient={onResolveRecipient}
+            onSend={onSend}
+            balance={balance}
+            busy={busy}
+          />
+        )}
 
-          {/* Send */}
-          <section className="card send-card">
-            <div className="card-label">
-              <Send size={15} /> Send sBTC
-            </div>
-            <label className="mini-label">Recipient (principal)</label>
-            <input
-              className="input block"
-              placeholder="ST… or resolve a @username above"
-              value={sendTo}
-              onChange={(e) => setSendTo(e.target.value)}
-            />
-            <label className="mini-label">Amount (sats)</label>
-            <input
-              className="input block"
-              type="number"
-              min="1"
-              placeholder="100000"
-              value={sendAmount}
-              onChange={(e) => setSendAmount(e.target.value)}
-            />
-            <button
-              className="btn primary full"
-              onClick={onSend}
-              disabled={busy === "send" || !sendTo || !sendAmount}
-            >
-              <Send size={16} />
-              {busy === "send" ? "Sending…" : "Send"}
-            </button>
-          </section>
+        {view === "activity" && <ActivityView address={address} />}
+      </main>
 
-          <footer className="app-foot">
-            <a
-              href="https://explorer.hiro.so/address/ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV?chain=testnet"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Live contracts on Stacks testnet <ExternalLink size={12} />
-            </a>
-          </footer>
-        </main>
-      )}
+      {/* Mobile bottom tabs */}
+      <nav className="tab-bar">
+        {nav.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            className={view === id ? "tab active" : "tab"}
+            onClick={() => setView(id)}
+          >
+            <Icon size={19} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
 
+// --- Overview view -------------------------------------------------------
+function Overview(props: {
+  balance: bigint;
+  myName: string | null;
+  regInput: string;
+  setRegInput: (v: string) => void;
+  onRegister: () => void;
+  onFaucet: () => void;
+  goSend: () => void;
+  busy: string | null;
+  address: string;
+}) {
+  const {
+    balance,
+    myName,
+    regInput,
+    setRegInput,
+    onRegister,
+    onFaucet,
+    goSend,
+    busy,
+  } = props;
+
+  return (
+    <>
+      <header className="page-head">
+        <div>
+          <h1>Overview</h1>
+          <p>Your Sato wallet on testnet.</p>
+        </div>
+      </header>
+
+      {/* Balance */}
+      <section className="panel balance-panel">
+        <span className="panel-eyebrow">Available balance</span>
+        <div className="balance-line">
+          <span className="balance-num">{fmt(balance)}</span>
+          <span className="balance-unit">sats</span>
+        </div>
+        <div className="panel-actions">
+          <button className="btn primary" onClick={goSend}>
+            <Send size={16} /> Send
+          </button>
+          <button
+            className="btn soft"
+            onClick={onFaucet}
+            disabled={busy === "faucet"}
+          >
+            <Plus size={16} />
+            {busy === "faucet" ? "Funding…" : "Get test sBTC"}
+          </button>
+        </div>
+      </section>
+
+      {/* Username */}
+      <section className="panel">
+        <span className="panel-eyebrow">Your username</span>
+        {myName ? (
+          <div className="claimed-row">
+            <span className="claimed-badge">
+              <Check size={15} /> @{myName}
+            </span>
+            <span className="claimed-note">
+              People can send to you by this name.
+            </span>
+          </div>
+        ) : (
+          <>
+            <p className="panel-lede">
+              Claim a username so people can pay you without an address.
+            </p>
+            <div className="inline-form">
+              <div className="text-field">
+                <span className="field-at">@</span>
+                <input
+                  className="field-input"
+                  placeholder="yourname"
+                  value={regInput}
+                  maxLength={32}
+                  onChange={(e) =>
+                    setRegInput(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
+                    )
+                  }
+                />
+              </div>
+              <button
+                className="btn primary"
+                onClick={onRegister}
+                disabled={busy === "register" || !regInput.trim()}
+              >
+                {busy === "register" ? "Claiming…" : "Claim"}
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+    </>
+  );
+}
+
+// --- Send view -----------------------------------------------------------
+function SendView(props: {
+  sendTo: string;
+  setSendTo: (v: string) => void;
+  sendAmount: string;
+  setSendAmount: (v: string) => void;
+  lookupState: "idle" | "pending" | "found" | "missing";
+  setLookupState: (v: "idle" | "pending" | "found" | "missing") => void;
+  onResolveRecipient: () => void;
+  onSend: () => void;
+  balance: bigint;
+  busy: string | null;
+}) {
+  const {
+    sendTo,
+    setSendTo,
+    sendAmount,
+    setSendAmount,
+    lookupState,
+    setLookupState,
+    onResolveRecipient,
+    onSend,
+    balance,
+    busy,
+  } = props;
+
+  return (
+    <>
+      <header className="page-head">
+        <div>
+          <h1>Send sBTC</h1>
+          <p>Pay a @username or a Stacks address.</p>
+        </div>
+      </header>
+
+      <section className="panel send-panel">
+        <label className="field-label">Recipient</label>
+        <div className="text-field block">
+          <Search size={16} className="field-lead" />
+          <input
+            className="field-input"
+            placeholder="@username or ST…"
+            value={sendTo}
+            onChange={(e) => {
+              setSendTo(e.target.value);
+              setLookupState("idle");
+            }}
+            onBlur={onResolveRecipient}
+            onKeyDown={(e) => e.key === "Enter" && onResolveRecipient()}
+          />
+        </div>
+        {lookupState === "pending" && (
+          <span className="field-hint muted">Looking up…</span>
+        )}
+        {lookupState === "found" && (
+          <span className="field-hint ok">
+            <Check size={13} /> Resolved to {short(sendTo)}
+          </span>
+        )}
+        {lookupState === "missing" && (
+          <span className="field-hint miss">That username isn't registered</span>
+        )}
+
+        <label className="field-label">Amount</label>
+        <div className="text-field block">
+          <input
+            className="field-input"
+            type="number"
+            min="1"
+            placeholder="100000"
+            value={sendAmount}
+            onChange={(e) => setSendAmount(e.target.value)}
+          />
+          <span className="field-trail">sats</span>
+        </div>
+        <span className="field-hint muted">
+          Balance: {fmt(balance)} sats
+        </span>
+
+        <button
+          className="btn primary full"
+          onClick={onSend}
+          disabled={busy === "send" || !sendTo || !sendAmount}
+        >
+          <Send size={16} />
+          {busy === "send" ? "Sending…" : "Send sBTC"}
+        </button>
+      </section>
+    </>
+  );
+}
+
+// --- Activity view (honest empty state) ----------------------------------
+function ActivityView({ address }: { address: string }) {
+  return (
+    <>
+      <header className="page-head">
+        <div>
+          <h1>Activity</h1>
+          <p>Your testnet transactions.</p>
+        </div>
+      </header>
+
+      <section className="panel empty-panel">
+        <span className="empty-icon">
+          <Receipt size={22} />
+        </span>
+        <h2>No activity to show yet</h2>
+        <p>
+          Sends and registrations you make will confirm on-chain. View your
+          full history on the Stacks explorer.
+        </p>
+        <a
+          className="btn soft"
+          href={explorerAddr(address)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open explorer <ArrowUpRight size={15} />
+        </a>
+      </section>
+    </>
+  );
+}
+
 // Scoped styles using Sato's palette (defined in index.css :root).
-const appStyles = `
-.sato-app{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--sans);}
-.app-bar{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--line);}
-.app-brand{display:flex;align-items:center;gap:8px;}
-.app-mark{width:28px;height:28px;border-radius:8px;background:var(--orange);color:#fff;display:grid;place-items:center;font-weight:700;}
-.app-name{font-weight:700;font-size:18px;}
-.app-badge{font-size:11px;text-transform:uppercase;letter-spacing:.05em;background:var(--mint);color:var(--navy);padding:2px 8px;border-radius:999px;font-weight:600;}
-.app-account{display:flex;align-items:center;gap:10px;}
-.app-handle{font-weight:600;color:var(--orange);}
-.app-hero{max-width:560px;margin:12vh auto 0;text-align:center;padding:0 24px;}
-.app-hero h1{font-size:40px;line-height:1.1;margin:0 0 16px;letter-spacing:-.02em;}
-.app-hero p{color:var(--text-muted);font-size:17px;line-height:1.6;margin:0 0 28px;}
-.app-grid{max-width:920px;margin:32px auto;padding:0 24px;display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-.card{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:20px;}
-.balance-card{grid-column:1/-1;}
-.send-card{grid-column:1/-1;}
-.card-label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;}
-.balance-value{font-size:34px;font-weight:700;letter-spacing:-.02em;}
-.card-actions{display:flex;gap:10px;margin-top:16px;}
-.claimed{font-size:16px;}
-.claimed strong{color:var(--orange);}
-.field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--paper);}
-.field .at{color:var(--text-muted);font-weight:600;}
-.input{flex:1;border:0;background:transparent;padding:12px 4px;font-size:15px;color:var(--ink);outline:none;font-family:var(--sans);}
-.input.block{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--paper);margin-bottom:6px;box-sizing:border-box;}
-.mini-label{display:block;font-size:12px;color:var(--text-muted);margin:10px 0 5px;font-weight:600;}
-.lookup{margin-top:12px;font-size:14px;}
-.lookup.ok code{background:var(--paper);padding:2px 6px;border-radius:6px;}
-.lookup.miss{color:#b4341f;}
-.lookup.muted,.muted{color:var(--text-muted);}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:transform .1s var(--ease),opacity .15s;}
+const shellStyles = `
+.sato-shell{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--sans);display:grid;grid-template-columns:248px 1fr;}
+.sato-shell *{box-sizing:border-box;}
+
+/* Disconnected */
+.sato-shell.disconnected{display:grid;place-items:center;grid-template-columns:1fr;padding:24px;}
+.connect-card{max-width:420px;text-align:center;background:var(--white);border:1px solid var(--line);border-radius:20px;padding:44px 40px;box-shadow:0 14px 40px #1620280a;}
+.connect-card h1{font-size:28px;letter-spacing:-.03em;margin:20px 0 12px;}
+.connect-card p{color:var(--text-muted);font-size:15px;line-height:1.65;margin:0 0 28px;}
+.connect-note{display:block;margin-top:16px;font-size:12px;color:var(--muted);}
+
+/* Sidebar */
+.sidebar{border-right:1px solid var(--line);padding:24px 16px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;background:var(--paper);}
+.sidebar-brand{display:flex;align-items:center;gap:9px;padding:4px 10px 24px;}
+.brand-mark{width:30px;height:30px;border-radius:9px;background:var(--orange);color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px;}
+.brand-mark.lg{width:52px;height:52px;border-radius:15px;font-size:26px;margin:0 auto;}
+.brand-name{font-weight:700;font-size:17px;letter-spacing:-.02em;}
+.brand-badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:var(--mint);color:var(--navy);padding:2px 7px;border-radius:999px;font-weight:700;}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px;flex:1;}
+.nav-item{display:flex;align-items:center;gap:11px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:11px 12px;border-radius:11px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:background .14s,color .14s;text-align:left;}
+.nav-item:hover{background:#ecebe5;color:var(--ink);}
+.nav-item.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
+.nav-item.active svg{color:var(--orange);}
+.sidebar-account{border-top:1px solid var(--line);padding-top:14px;margin-top:14px;}
+.account-row{display:flex;align-items:center;gap:10px;padding:4px 6px;}
+.account-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#4f74ba;display:grid;place-items:center;font-size:12px;font-weight:700;}
+.account-meta{display:flex;flex-direction:column;min-width:0;}
+.account-meta strong{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.account-meta small{font-size:11.5px;color:var(--muted);font-family:var(--mono);}
+.account-signout{display:flex;align-items:center;gap:7px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:9px 6px;margin-top:6px;border-radius:9px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
+.account-signout:hover{color:var(--ink);background:#ecebe5;}
+
+/* Main */
+.main{padding:40px clamp(24px,5vw,64px);max-width:760px;width:100%;}
+.page-head{margin-bottom:28px;}
+.page-head h1{font-size:26px;letter-spacing:-.03em;margin:0 0 4px;}
+.page-head p{color:var(--text-muted);font-size:14.5px;margin:0;}
+
+/* Panels */
+.panel{background:var(--white);border:1px solid var(--line);border-radius:18px;padding:26px;margin-bottom:16px;}
+.panel-eyebrow{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:14px;}
+.panel-lede{color:var(--text-muted);font-size:14.5px;line-height:1.6;margin:0 0 16px;}
+
+.balance-line{display:flex;align-items:baseline;gap:8px;}
+.balance-num{font-size:46px;font-weight:700;letter-spacing:-.03em;line-height:1;}
+.balance-unit{font-size:17px;color:var(--text-muted);font-weight:600;}
+.panel-actions{display:flex;gap:10px;margin-top:24px;}
+
+.claimed-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.claimed-badge{display:inline-flex;align-items:center;gap:6px;background:#f0f7f3;color:#2f7d54;border:1px solid #cfe8db;padding:8px 14px;border-radius:999px;font-weight:700;font-size:15px;}
+.claimed-note{color:var(--text-muted);font-size:13.5px;}
+
+.inline-form{display:flex;gap:10px;}
+.text-field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:var(--paper);flex:1;transition:border-color .14s,box-shadow .14s;}
+.text-field:focus-within{border-color:var(--orange);box-shadow:0 0 0 3px #f15a2418;}
+.text-field.block{width:100%;margin-bottom:4px;}
+.field-at{color:var(--text-muted);font-weight:700;}
+.field-lead{color:var(--muted);flex-shrink:0;}
+.field-trail{color:var(--text-muted);font-size:13px;font-weight:600;}
+.field-input{flex:1;border:0;background:transparent;padding:13px 2px;font-size:15px;color:var(--ink);outline:none;font-family:var(--sans);min-width:0;}
+.field-label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin:16px 0 7px;}
+.field-label:first-child{margin-top:0;}
+.field-hint{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;margin-top:2px;}
+.field-hint.muted{color:var(--muted);}
+.field-hint.ok{color:#2f7d54;}
+.field-hint.miss{color:#b4341f;}
+
+.send-panel .btn.full{margin-top:22px;}
+
+/* Empty state */
+.empty-panel{text-align:center;padding:48px 32px;}
+.empty-icon{width:56px;height:56px;border-radius:16px;background:var(--paper);border:1px solid var(--line);display:grid;place-items:center;color:var(--text-muted);margin:0 auto 18px;}
+.empty-panel h2{font-size:18px;letter-spacing:-.02em;margin:0 0 8px;}
+.empty-panel p{color:var(--text-muted);font-size:14px;line-height:1.6;max-width:340px;margin:0 auto 22px;}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:12px;padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:transform .1s var(--ease),opacity .15s,background .15s;text-decoration:none;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 .btn:not(:disabled):active{transform:translateY(1px);}
 .btn.primary{background:var(--orange);color:#fff;}
-.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
-.btn.subtle{background:var(--paper);border:1px solid var(--line);color:var(--ink);}
-.btn.full{width:100%;margin-top:14px;}
-.btn.lg{padding:14px 24px;font-size:16px;}
-.app-foot{grid-column:1/-1;text-align:center;margin-top:8px;}
-.app-foot a{color:var(--text-muted);font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
-.app-foot a:hover{color:var(--orange);}
-@media(max-width:640px){.app-grid{grid-template-columns:1fr;}.app-hero h1{font-size:32px;}}
+.btn.primary:not(:disabled):hover{background:#e04f1e;}
+.btn.soft{background:var(--paper);border:1px solid var(--line);color:var(--ink);}
+.btn.soft:hover{background:#ecebe5;}
+.btn.full{width:100%;}
+.btn.lg{padding:14px 24px;font-size:15px;}
+
+/* Mobile bottom tabs (hidden on desktop) */
+.tab-bar{display:none;}
+
+@media(max-width:800px){
+  .sato-shell{grid-template-columns:1fr;}
+  .sidebar{display:none;}
+  .main{padding:28px 20px 96px;max-width:100%;}
+  .tab-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));z-index:20;}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;border:0;background:transparent;color:var(--text-muted);padding:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);}
+  .tab.active{color:var(--orange);}
+  .balance-num{font-size:40px;}
+}
 `;
 
 // Provider wrapper so the route can mount <App /> directly.
