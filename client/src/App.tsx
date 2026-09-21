@@ -7,6 +7,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import SatoApp from "./pages/App";
 import Privacy from "./pages/Privacy";
 import Security from "./pages/Security";
 import Terms from "./pages/Terms";
@@ -16,6 +17,7 @@ function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
+      <Route path={"/app"} component={SatoApp} />
       <Route path={"/people"} component={People} />
       <Route path={"/businesses"} component={Businesses} />
       <Route path={"/security"} component={Security} />

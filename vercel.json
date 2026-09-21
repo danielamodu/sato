@@ -3,6 +3,7 @@
   "outputDirectory": "dist/public",
   "framework": "vite",
   "rewrites": [
+    { "source": "/app", "destination": "/index.html" },
     { "source": "/people", "destination": "/index.html" },
     { "source": "/businesses", "destination": "/index.html" },
     { "source": "/security", "destination": "/index.html" },
