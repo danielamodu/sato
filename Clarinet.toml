@@ -20,5 +20,10 @@ path = "contracts/sato-sponsor.clar"
 clarity_version = 3
 epoch = "3.4"
 
+[contracts.sato-yield]
+path = "contracts/sato-yield.clar"
+clarity_version = 3
+epoch = "3.4"
+
 [repl.analysis]
 passes = ["check_checker"]
