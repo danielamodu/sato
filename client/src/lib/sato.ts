@@ -44,6 +44,19 @@ async function readOnly(
   });
 }
 
+// cvToValue unwraps an `(optional T)`: `none` -> null, but `(some T)` ->
+// a `{ type, value }` wrapper object (via cvToJSON), NOT the bare value.
+// This pulls the string out of either shape and rejects anything else,
+// so callers always get a clean `string | null` (never an object).
+function optionalString(val: unknown): string | null {
+  if (typeof val === "string") return val;
+  if (val && typeof val === "object" && "value" in val) {
+    const inner = (val as { value: unknown }).value;
+    return typeof inner === "string" ? inner : null;
+  }
+  return null;
+}
+
 // Resolve a @username to the principal that owns it (null if unregistered).
 export async function resolveName(name: string): Promise<string | null> {
   const cv = await readOnly(
@@ -52,9 +65,8 @@ export async function resolveName(name: string): Promise<string | null> {
     [Cl.stringAscii(name)],
     DEPLOYER
   );
-  // returns (optional principal): some -> principal, none -> null
-  const val = cvToValue(cv);
-  return val ?? null;
+  // returns (optional principal): some -> {type,value:principal}, none -> null
+  return optionalString(cvToValue(cv));
 }
 
 // Look up the username a principal has registered (null if none).
@@ -65,8 +77,8 @@ export async function getName(owner: string): Promise<string | null> {
     [Cl.principal(owner)],
     owner
   );
-  const val = cvToValue(cv);
-  return val ?? null;
+  // returns (optional (string-ascii)): some -> {type,value:name}, none -> null
+  return optionalString(cvToValue(cv));
 }
 
 // Get a principal's sBTC balance (in sats) from the transfer ledger.
