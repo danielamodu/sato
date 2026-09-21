@@ -61,6 +61,8 @@ Production version will integrate with the canonical sBTC token contract:
 |----------|---------|
 | `sato-transfer` | [View on Explorer](https://explorer.hiro.so/txid/ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV.sato-transfer?chain=testnet) |
 | `sato-names` | [View on Explorer](https://explorer.hiro.so/txid/ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV.sato-names?chain=testnet) |
+| `sato-sponsor` | [View on Explorer](https://explorer.hiro.so/txid/0x61811b57d75caf56157266f436bb8e3ab79c81b14dc7ea50d2226d6992111052?chain=testnet) |
+| `sato-yield` | [View on Explorer](https://explorer.hiro.so/txid/0x8e5e712fb5bb9ff42b80cd40c3d122d1f3ae26f8b0340320e8361e70eaa73b52?chain=testnet) |
 
 Deployer: `ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV`
 
