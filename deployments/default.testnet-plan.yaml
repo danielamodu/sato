@@ -35,4 +35,18 @@ plan:
       path: contracts/sato-yield.clar
       anchor-block-only: false
       clarity-version: 3
+    - transaction-type: contract-publish
+      contract-name: sip-010-transfer
+      expected-sender: ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV
+      cost: 120198
+      path: contracts/sip-010-transfer.clar
+      anchor-block-only: false
+      clarity-version: 3
+    - transaction-type: contract-publish
+      contract-name: sato-vault
+      expected-sender: ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV
+      cost: 120198
+      path: contracts/sato-vault.clar
+      anchor-block-only: false
+      clarity-version: 3
     epoch: '3.4'
