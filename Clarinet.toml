@@ -25,5 +25,21 @@ path = "contracts/sato-yield.clar"
 clarity_version = 3
 epoch = "3.4"
 
+[contracts.sip-010-transfer]
+path = "contracts/sip-010-transfer.clar"
+clarity_version = 3
+epoch = "3.4"
+
+[contracts.sato-vault]
+path = "contracts/sato-vault.clar"
+clarity_version = 3
+epoch = "3.4"
+
+# Test-only sBTC token: exercised in simnet, never deployed to a live network.
+[contracts.mock-sbtc]
+path = "contracts/mock-sbtc.clar"
+clarity_version = 3
+epoch = "3.4"
+
 [repl.analysis]
 passes = ["check_checker"]

@@ -44,6 +44,16 @@ plan:
   - id: 0
     transactions:
     - transaction-type: emulated-contract-publish
+      contract-name: sip-010-transfer
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/sip-010-transfer.clar
+      clarity-version: 3
+    - transaction-type: emulated-contract-publish
+      contract-name: mock-sbtc
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/mock-sbtc.clar
+      clarity-version: 3
+    - transaction-type: emulated-contract-publish
       contract-name: sato-names
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/sato-names.clar
@@ -57,6 +67,11 @@ plan:
       contract-name: sato-transfer
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/sato-transfer.clar
+      clarity-version: 3
+    - transaction-type: emulated-contract-publish
+      contract-name: sato-vault
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/sato-vault.clar
       clarity-version: 3
     - transaction-type: emulated-contract-publish
       contract-name: sato-yield
