@@ -158,30 +158,79 @@ function SatoApp() {
     }
   };
 
-  // --- disconnected: a calm, centered connect prompt --------------------
+  // --- disconnected: split sign-in, warm brand panel echoing the app ----
   if (!address) {
     return (
-      <div className="sato-shell disconnected">
+      <div className="sato-shell auth">
         <style>{shellStyles}</style>
-        <div className="connect-card">
-          <span className="brand-mark lg">₿</span>
-          <h1>Welcome to Sato</h1>
-          <p>
-            Bitcoin payments that feel human. Connect a Stacks wallet to try
-            Sato on testnet — claim a username, look someone up, and send
-            sBTC against live on-chain contracts.
-          </p>
-          <button
-            className="btn primary lg"
-            onClick={connectWallet}
-            disabled={isConnecting}
-          >
-            <Wallet size={18} />
-            {isConnecting ? "Connecting…" : "Connect wallet"}
-          </button>
-          <span className="connect-note">
-            Testnet only · no real funds at risk
-          </span>
+
+        {/* Left: connect */}
+        <div className="auth-panel">
+          <div className="auth-top">
+            <span className="auth-brand">
+              <span className="brand-mark">₿</span>
+              <span className="brand-name">sato</span>
+              <span className="brand-badge">testnet</span>
+            </span>
+            <a className="auth-back" href="/">
+              Back to site
+            </a>
+          </div>
+
+          <div className="auth-body">
+            <span className="auth-eyebrow">Testnet preview</span>
+            <h1 className="auth-title">
+              Send Bitcoin
+              <br />
+              like a text.
+            </h1>
+            <p className="auth-lede">
+              Connect a Stacks wallet to try Sato on testnet — claim a
+              @username, look someone up, and send sBTC against live on-chain
+              contracts.
+            </p>
+
+            <button
+              className="btn primary lg full"
+              onClick={connectWallet}
+              disabled={isConnecting}
+            >
+              <Wallet size={18} />
+              {isConnecting ? "Connecting…" : "Connect wallet"}
+            </button>
+
+            <ul className="auth-points">
+              <li>
+                <Check size={15} /> Testnet only · no real funds at risk
+              </li>
+              <li>
+                <Check size={15} /> Non-custodial · you approve every action
+              </li>
+            </ul>
+          </div>
+
+          <span className="auth-foot">© 2026 Sato · Built on Bitcoin</span>
+        </div>
+
+        {/* Right: brand panel — a product card mirroring the dashboard */}
+        <div className="auth-brandside" aria-hidden="true">
+          <div className="brandside-glow" />
+          <div className="brandside-card">
+            <span className="bs-eyebrow">Available balance</span>
+            <div className="bs-balance">
+              <b>1,000,000</b> <span>sats</span>
+            </div>
+            <div className="bs-send">
+              <span className="bs-avatar">SZ</span>
+              <span className="bs-meta">
+                <small>Sending to</small>
+                <strong>@szr</strong>
+              </span>
+              <Check size={16} />
+            </div>
+            <div className="bs-btn">Send sBTC</div>
+          </div>
+          <p className="brandside-tag">Bitcoin payments that feel human.</p>
         </div>
       </div>
     );
@@ -516,12 +565,39 @@ const shellStyles = `
 .sato-shell{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--sans);display:grid;grid-template-columns:248px 1fr;}
 .sato-shell *{box-sizing:border-box;}
 
-/* Disconnected */
-.sato-shell.disconnected{display:grid;place-items:center;grid-template-columns:1fr;padding:24px;}
-.connect-card{max-width:420px;text-align:center;background:var(--white);border:1px solid var(--line);border-radius:20px;padding:44px 40px;box-shadow:0 14px 40px #1620280a;}
-.connect-card h1{font-size:28px;letter-spacing:-.03em;margin:20px 0 12px;}
-.connect-card p{color:var(--text-muted);font-size:15px;line-height:1.65;margin:0 0 28px;}
-.connect-note{display:block;margin-top:16px;font-size:12px;color:var(--muted);}
+/* Auth (disconnected) — split sign-in */
+.sato-shell.auth{grid-template-columns:1fr 1fr;min-height:100vh;}
+.auth-panel{display:flex;flex-direction:column;padding:36px clamp(28px,5vw,64px);}
+.auth-top{display:flex;align-items:center;justify-content:space-between;}
+.auth-brand{display:flex;align-items:center;gap:9px;}
+.auth-brand .brand-name{font-weight:800;font-size:18px;letter-spacing:-.03em;}
+.auth-back{font-size:13px;font-weight:600;color:var(--text-muted);transition:color .15s;}
+.auth-back:hover{color:var(--ink);}
+.auth-body{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:420px;}
+.auth-eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--orange);margin-bottom:18px;}
+.auth-title{font-size:clamp(38px,5vw,52px);line-height:1.02;letter-spacing:-.055em;font-weight:700;margin:0 0 20px;}
+.auth-lede{color:var(--text-muted);font-size:15.5px;line-height:1.65;margin:0 0 30px;}
+.auth-points{list-style:none;padding:0;margin:22px 0 0;display:flex;flex-direction:column;gap:11px;}
+.auth-points li{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--text-muted);}
+.auth-points svg{color:#2f7d54;flex-shrink:0;}
+.auth-foot{font-size:12px;color:var(--muted);}
+
+/* Brand panel */
+.auth-brandside{position:relative;background:linear-gradient(150deg,#f15a24 0%,#ff7a45 42%,#ffa06b 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;overflow:hidden;}
+.brandside-glow{position:absolute;width:560px;height:560px;border-radius:50%;background:radial-gradient(circle,#ffffff40,transparent 62%);top:-120px;right:-160px;}
+.brandside-card{position:relative;z-index:1;width:min(100%,340px);background:var(--white);border-radius:20px;padding:24px;box-shadow:0 26px 60px #7a220e40;transform:rotate(-1.5deg);}
+.bs-eyebrow{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;}
+.bs-balance{display:flex;align-items:baseline;gap:7px;}
+.bs-balance b{font-size:36px;font-weight:700;letter-spacing:-.03em;}
+.bs-balance span{color:var(--text-muted);font-size:14px;font-weight:600;}
+.bs-send{display:flex;align-items:center;gap:10px;margin:20px 0 16px;padding:14px;background:var(--paper);border-radius:13px;}
+.bs-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#4f74ba;display:grid;place-items:center;font-size:12px;font-weight:700;}
+.bs-meta{display:flex;flex-direction:column;flex:1;}
+.bs-meta small{font-size:11px;color:var(--muted);}
+.bs-meta strong{font-size:14px;}
+.bs-send>svg{color:#2f7d54;}
+.bs-btn{background:var(--orange);color:#fff;border-radius:11px;padding:12px;text-align:center;font-size:14px;font-weight:600;}
+.brandside-tag{position:relative;z-index:1;color:#fff;font-size:16px;font-weight:600;letter-spacing:-.02em;margin:34px 0 0;text-align:center;text-shadow:0 1px 8px #7a220e30;}
 
 /* Sidebar */
 .sidebar{border-right:1px solid var(--line);padding:24px 16px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;background:var(--paper);}
@@ -603,6 +679,9 @@ const shellStyles = `
 
 @media(max-width:800px){
   .sato-shell{grid-template-columns:1fr;}
+  .sato-shell.auth{grid-template-columns:1fr;}
+  .auth-brandside{display:none;}
+  .auth-body{max-width:100%;}
   .sidebar{display:none;}
   .main{padding:28px 20px 96px;max-width:100%;}
   .tab-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));z-index:20;}
