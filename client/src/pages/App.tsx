@@ -30,6 +30,7 @@ import {
   AtSign,
   Coins,
   Hash,
+  TrendingUp,
 } from "lucide-react";
 import { StacksProvider, useStacks } from "@/contexts/StacksContext";
 import {
@@ -40,7 +41,12 @@ import {
   sendSbtc,
   fundSelf,
   getRecentTransactions,
+  getEarnStats,
+  earnDeposit,
+  earnWithdraw,
+  fundEarn,
   type SatoTx,
+  type EarnStats,
 } from "@/lib/sato";
 
 const short = (a: string) => `${a.slice(0, 5)}…${a.slice(-4)}`;
@@ -70,6 +76,7 @@ function timeAgo(ms: number | null): string {
 // Pick an icon for a transaction by its function label.
 function txIcon(label: string) {
   if (label.startsWith("Sent")) return ArrowUpRight;
+  if (label.includes("Earn")) return TrendingUp;
   if (label.startsWith("Added")) return ArrowDownLeft;
   if (label.includes("username")) return AtSign;
   return Receipt;
@@ -80,7 +87,7 @@ function txidOf(res: any): string | undefined {
   return res?.txid ?? res?.txId ?? res?.result?.txid;
 }
 
-type View = "overview" | "send" | "activity";
+type View = "overview" | "send" | "earn" | "activity";
 
 function SatoApp() {
   const { address, isConnecting, connectWallet, disconnectWallet } = useStacks();
@@ -97,13 +104,25 @@ function SatoApp() {
   const [busy, setBusy] = useState<string | null>(null);
   const [txs, setTxs] = useState<SatoTx[]>([]);
   const [txLoading, setTxLoading] = useState(true);
+  const [earn, setEarn] = useState<EarnStats>({
+    deposited: 0n,
+    earned: 0n,
+    available: 0n,
+    poolTotal: 0n,
+  });
+  const [earnAmount, setEarnAmount] = useState("");
 
-  // Refresh the connected user's name + balance, then recent activity.
+  // Refresh the connected user's name + balance + earn position, then activity.
   const refresh = async (addr: string) => {
     try {
-      const [n, b] = await Promise.all([getName(addr), getBalance(addr)]);
+      const [n, b, e] = await Promise.all([
+        getName(addr),
+        getBalance(addr),
+        getEarnStats(addr),
+      ]);
       setMyName(n);
       setBalance(b);
+      setEarn(e);
     } catch (e) {
       console.error("refresh failed", e);
     }
@@ -121,6 +140,7 @@ function SatoApp() {
       setMyName(null);
       setBalance(0n);
       setTxs([]);
+      setEarn({ deposited: 0n, earned: 0n, available: 0n, poolTotal: 0n });
     }
   }, [address]);
 
@@ -193,6 +213,69 @@ function SatoApp() {
       const txid = txidOf(res);
       toast.success("Funding 1,000,000 sats", {
         description: "testnet faucet",
+        action: txid
+          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
+          : undefined,
+      });
+      if (address) setTimeout(() => refresh(address), 4000);
+    } catch (e: any) {
+      toast.error("Faucet cancelled", { description: e?.message });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onEarnDeposit = async () => {
+    const amount = BigInt(earnAmount || "0");
+    if (amount <= 0n) return;
+    setBusy("earn-deposit");
+    try {
+      const res = await earnDeposit(amount);
+      const txid = txidOf(res);
+      toast.success(`Depositing ${fmt(amount)} sats`, {
+        description: "into the Earn pool",
+        action: txid
+          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
+          : undefined,
+      });
+      setEarnAmount("");
+      if (address) setTimeout(() => refresh(address), 4000);
+    } catch (e: any) {
+      toast.error("Deposit cancelled", { description: e?.message });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onEarnWithdraw = async () => {
+    const amount = BigInt(earnAmount || "0");
+    if (amount <= 0n) return;
+    setBusy("earn-withdraw");
+    try {
+      const res = await earnWithdraw(amount);
+      const txid = txidOf(res);
+      toast.success(`Withdrawing ${fmt(amount)} sats`, {
+        description: "principal + earned yield",
+        action: txid
+          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
+          : undefined,
+      });
+      setEarnAmount("");
+      if (address) setTimeout(() => refresh(address), 4000);
+    } catch (e: any) {
+      toast.error("Withdrawal cancelled", { description: e?.message });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onEarnFaucet = async () => {
+    setBusy("earn-fund");
+    try {
+      const res = await fundEarn(1_000_000n);
+      const txid = txidOf(res);
+      toast.success("Funding 1,000,000 sats", {
+        description: "to your Earn balance",
         action: txid
           ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
           : undefined,
@@ -290,6 +373,7 @@ function SatoApp() {
   const nav: { id: View; label: string; icon: typeof LayoutGrid }[] = [
     { id: "overview", label: "Overview", icon: LayoutGrid },
     { id: "send", label: "Send", icon: Send },
+    { id: "earn", label: "Earn", icon: TrendingUp },
     { id: "activity", label: "Activity", icon: Receipt },
   ];
 
@@ -381,6 +465,18 @@ function SatoApp() {
             onResolveRecipient={onResolveRecipient}
             onSend={onSend}
             balance={balance}
+            busy={busy}
+          />
+        )}
+
+        {view === "earn" && (
+          <EarnView
+            earn={earn}
+            earnAmount={earnAmount}
+            setEarnAmount={setEarnAmount}
+            onDeposit={onEarnDeposit}
+            onWithdraw={onEarnWithdraw}
+            onFaucet={onEarnFaucet}
             busy={busy}
           />
         )}
@@ -811,6 +907,143 @@ function SendView(props: {
   );
 }
 
+// --- Earn view (sato-yield pool) -----------------------------------------
+function EarnView(props: {
+  earn: EarnStats;
+  earnAmount: string;
+  setEarnAmount: (v: string) => void;
+  onDeposit: () => void;
+  onWithdraw: () => void;
+  onFaucet: () => void;
+  busy: string | null;
+}) {
+  const {
+    earn,
+    earnAmount,
+    setEarnAmount,
+    onDeposit,
+    onWithdraw,
+    onFaucet,
+    busy,
+  } = props;
+
+  return (
+    <>
+      <header className="page-head">
+        <div>
+          <h1>Earn</h1>
+          <p>Put idle sBTC to work and earn yield on your balance.</p>
+        </div>
+        <button
+          className="btn soft"
+          onClick={onFaucet}
+          disabled={busy === "earn-fund"}
+        >
+          <Plus size={16} />
+          {busy === "earn-fund" ? "Funding…" : "Get test sBTC"}
+        </button>
+      </header>
+
+      <div className="stat-row">
+        <StatTile
+          label="Deposited"
+          icon={TrendingUp}
+          big
+          value={
+            <>
+              {fmt(earn.deposited)} <small>sats</small>
+            </>
+          }
+          sub="Earning in the pool"
+        />
+        <StatTile
+          label="Yield earned"
+          icon={Coins}
+          value={
+            <>
+              {fmt(earn.earned)} <small>sats</small>
+            </>
+          }
+          sub="Grows as the pool earns"
+        />
+        <StatTile
+          label="Available"
+          icon={Wallet}
+          value={
+            <>
+              {fmt(earn.available)} <small>sats</small>
+            </>
+          }
+          sub="Ready to deposit"
+        />
+      </div>
+
+      <div className="send-grid">
+        <section className="panel send-panel">
+          <label className="field-label">Amount</label>
+          <div className="text-field block">
+            <input
+              className="field-input"
+              type="number"
+              min="1"
+              placeholder="100000"
+              value={earnAmount}
+              onChange={(e) => setEarnAmount(e.target.value)}
+            />
+            <span className="field-trail">sats</span>
+          </div>
+          <span className="field-hint muted">
+            Available {fmt(earn.available)} · Deposited {fmt(earn.deposited)}{" "}
+            sats
+          </span>
+          <div className="earn-actions">
+            <button
+              className="btn primary"
+              onClick={onDeposit}
+              disabled={busy === "earn-deposit" || !earnAmount}
+            >
+              <ArrowDownLeft size={16} />
+              {busy === "earn-deposit" ? "Depositing…" : "Deposit"}
+            </button>
+            <button
+              className="btn soft"
+              onClick={onWithdraw}
+              disabled={busy === "earn-withdraw" || !earnAmount}
+            >
+              <ArrowUpRight size={16} />
+              {busy === "earn-withdraw" ? "Withdrawing…" : "Withdraw"}
+            </button>
+          </div>
+        </section>
+
+        <aside className="panel send-aside">
+          <span className="panel-eyebrow">How earning works</span>
+          <ul className="tips">
+            <li>
+              <span className="tip-dot" /> Deposited sBTC earns a{" "}
+              <b>pro-rata share</b> of pool yield.
+            </li>
+            <li>
+              <span className="tip-dot" /> No lockup — withdraw your principal
+              anytime.
+            </li>
+            <li>
+              <span className="tip-dot" /> Any withdrawal <b>pays out all earned
+              yield</b> too.
+            </li>
+          </ul>
+          <div className="aside-balance">
+            <span>Pool size</span>
+            <strong>
+              {fmt(earn.poolTotal)} <small>sats</small>
+            </strong>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
 // --- Activity view (live on-chain history) -------------------------------
 function ActivityView(props: {
   address: string;
@@ -954,6 +1187,8 @@ const shellStyles = `
 .field-hint.miss{color:#b4341f;}
 
 .send-panel .btn.full{margin-top:22px;}
+.earn-actions{display:flex;gap:10px;margin-top:22px;}
+.earn-actions .btn{flex:1;}
 
 /* Empty state */
 .empty-panel{text-align:center;padding:48px 32px;}
