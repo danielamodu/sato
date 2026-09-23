@@ -31,6 +31,8 @@ import {
   Coins,
   Hash,
   TrendingUp,
+  Fuel,
+  Zap,
 } from "lucide-react";
 import { StacksProvider, useStacks } from "@/contexts/StacksContext";
 import {
@@ -45,12 +47,21 @@ import {
   earnDeposit,
   earnWithdraw,
   fundEarn,
+  getSponsorStats,
+  sponsorTopUp,
+  isNameAvailable,
   type SatoTx,
   type EarnStats,
+  type SponsorStats,
 } from "@/lib/sato";
 
 const short = (a: string) => `${a.slice(0, 5)}…${a.slice(-4)}`;
 const fmt = (n: bigint) => n.toLocaleString();
+// micro-STX (1e6 = 1 STX) → a friendly STX string for the gas pool.
+const fmtStx = (micro: bigint) =>
+  (Number(micro) / 1_000_000).toLocaleString(undefined, {
+    maximumFractionDigits: 6,
+  });
 const explorerTx = (txid: string) =>
   `https://explorer.hiro.so/txid/${txid}?chain=testnet`;
 const explorerAddr = (a: string) =>
@@ -77,6 +88,7 @@ function timeAgo(ms: number | null): string {
 function txIcon(label: string) {
   if (label.startsWith("Sent")) return ArrowUpRight;
   if (label.includes("Earn")) return TrendingUp;
+  if (label.includes("gas") || label.includes("Gas")) return Fuel;
   if (label.startsWith("Added")) return ArrowDownLeft;
   if (label.includes("username")) return AtSign;
   return Receipt;
@@ -87,7 +99,7 @@ function txidOf(res: any): string | undefined {
   return res?.txid ?? res?.txId ?? res?.result?.txid;
 }
 
-type View = "overview" | "send" | "earn" | "activity";
+type View = "overview" | "send" | "earn" | "gas" | "activity";
 
 function SatoApp() {
   const { address, isConnecting, connectWallet, disconnectWallet } = useStacks();
@@ -111,18 +123,31 @@ function SatoApp() {
     poolTotal: 0n,
   });
   const [earnAmount, setEarnAmount] = useState("");
+  const [sponsor, setSponsor] = useState<SponsorStats>({
+    poolBalance: 0n,
+    remaining: 0n,
+    cap: 0n,
+    sponsoredCount: 0n,
+    windowLength: 0n,
+  });
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [nameState, setNameState] = useState<
+    "idle" | "checking" | "available" | "taken"
+  >("idle");
 
   // Refresh the connected user's name + balance + earn position, then activity.
   const refresh = async (addr: string) => {
     try {
-      const [n, b, e] = await Promise.all([
+      const [n, b, e, s] = await Promise.all([
         getName(addr),
         getBalance(addr),
         getEarnStats(addr),
+        getSponsorStats(addr),
       ]);
       setMyName(n);
       setBalance(b);
       setEarn(e);
+      setSponsor(s);
     } catch (e) {
       console.error("refresh failed", e);
     }
@@ -141,8 +166,34 @@ function SatoApp() {
       setBalance(0n);
       setTxs([]);
       setEarn({ deposited: 0n, earned: 0n, available: 0n, poolTotal: 0n });
+      setSponsor({
+        poolBalance: 0n,
+        remaining: 0n,
+        cap: 0n,
+        sponsoredCount: 0n,
+        windowLength: 0n,
+      });
     }
   }, [address]);
+
+  // Live username availability — debounced read of the on-chain registry so
+  // the claim form can confirm a handle before the user spends a tx on it.
+  useEffect(() => {
+    const name = regInput.trim();
+    if (!name) {
+      setNameState("idle");
+      return;
+    }
+    setNameState("checking");
+    const t = setTimeout(async () => {
+      try {
+        setNameState((await isNameAvailable(name)) ? "available" : "taken");
+      } catch {
+        setNameState("idle");
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [regInput]);
 
   const onRegister = async () => {
     const name = regInput.trim();
@@ -288,6 +339,30 @@ function SatoApp() {
     }
   };
 
+  const onTopUp = async () => {
+    const stx = parseFloat(topUpAmount || "0");
+    if (!(stx > 0)) return;
+    const micro = BigInt(Math.round(stx * 1_000_000));
+    if (micro <= 0n) return;
+    setBusy("topup");
+    try {
+      const res = await sponsorTopUp(micro);
+      const txid = txidOf(res);
+      toast.success(`Adding ${topUpAmount} STX to the gas pool`, {
+        description: "covers transaction fees for everyone",
+        action: txid
+          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
+          : undefined,
+      });
+      setTopUpAmount("");
+      if (address) setTimeout(() => refresh(address), 4000);
+    } catch (e: any) {
+      toast.error("Top-up cancelled", { description: e?.message });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // --- disconnected: split sign-in, warm brand panel echoing the app ----
   if (!address) {
     return (
@@ -374,6 +449,7 @@ function SatoApp() {
     { id: "overview", label: "Overview", icon: LayoutGrid },
     { id: "send", label: "Send", icon: Send },
     { id: "earn", label: "Earn", icon: TrendingUp },
+    { id: "gas", label: "Gas", icon: Fuel },
     { id: "activity", label: "Activity", icon: Receipt },
   ];
 
@@ -443,6 +519,7 @@ function SatoApp() {
             myName={myName}
             regInput={regInput}
             setRegInput={setRegInput}
+            nameState={nameState}
             onRegister={onRegister}
             onFaucet={onFaucet}
             goSend={() => setView("send")}
@@ -477,6 +554,16 @@ function SatoApp() {
             onDeposit={onEarnDeposit}
             onWithdraw={onEarnWithdraw}
             onFaucet={onEarnFaucet}
+            busy={busy}
+          />
+        )}
+
+        {view === "gas" && (
+          <GasView
+            sponsor={sponsor}
+            topUpAmount={topUpAmount}
+            setTopUpAmount={setTopUpAmount}
+            onTopUp={onTopUp}
             busy={busy}
           />
         )}
@@ -632,6 +719,7 @@ function Overview(props: {
   myName: string | null;
   regInput: string;
   setRegInput: (v: string) => void;
+  nameState: "idle" | "checking" | "available" | "taken";
   onRegister: () => void;
   onFaucet: () => void;
   goSend: () => void;
@@ -646,6 +734,7 @@ function Overview(props: {
     myName,
     regInput,
     setRegInput,
+    nameState,
     onRegister,
     onFaucet,
     goSend,
@@ -760,11 +849,31 @@ function Overview(props: {
                   <button
                     className="btn primary"
                     onClick={onRegister}
-                    disabled={busy === "register" || !regInput.trim()}
+                    disabled={
+                      busy === "register" ||
+                      !regInput.trim() ||
+                      nameState === "checking" ||
+                      nameState === "taken"
+                    }
                   >
                     {busy === "register" ? "Claiming…" : "Claim"}
                   </button>
                 </div>
+                {regInput.trim() && nameState === "checking" && (
+                  <span className="field-hint muted">
+                    Checking the registry…
+                  </span>
+                )}
+                {nameState === "available" && (
+                  <span className="field-hint ok">
+                    <Check size={13} /> @{regInput.trim()} is available
+                  </span>
+                )}
+                {nameState === "taken" && (
+                  <span className="field-hint miss">
+                    @{regInput.trim()} is already taken
+                  </span>
+                )}
               </>
             )}
           </section>
@@ -814,6 +923,15 @@ function SendView(props: {
     balance,
     busy,
   } = props;
+
+  // Validate the amount against the live on-chain balance.
+  let amountSats = 0n;
+  try {
+    amountSats = BigInt(sendAmount || "0");
+  } catch {
+    amountSats = 0n;
+  }
+  const overBalance = amountSats > balance;
 
   return (
     <>
@@ -865,14 +983,18 @@ function SendView(props: {
           />
           <span className="field-trail">sats</span>
         </div>
-        <span className="field-hint muted">
-          Balance: {fmt(balance)} sats
-        </span>
+        {overBalance ? (
+          <span className="field-hint miss">
+            Amount exceeds your balance of {fmt(balance)} sats
+          </span>
+        ) : (
+          <span className="field-hint muted">Balance: {fmt(balance)} sats</span>
+        )}
 
         <button
           className="btn primary full"
           onClick={onSend}
-          disabled={busy === "send" || !sendTo || !sendAmount}
+          disabled={busy === "send" || !sendTo || !sendAmount || overBalance}
         >
           <Send size={16} />
           {busy === "send" ? "Sending…" : "Send sBTC"}
@@ -926,6 +1048,16 @@ function EarnView(props: {
     onFaucet,
     busy,
   } = props;
+
+  // Compare the entered amount to the live on-chain balances.
+  let amountSats = 0n;
+  try {
+    amountSats = BigInt(earnAmount || "0");
+  } catch {
+    amountSats = 0n;
+  }
+  const overAvailable = amountSats > earn.available;
+  const overDeposited = amountSats > earn.deposited;
 
   return (
     <>
@@ -996,11 +1128,16 @@ function EarnView(props: {
             Available {fmt(earn.available)} · Deposited {fmt(earn.deposited)}{" "}
             sats
           </span>
+          {earnAmount && overAvailable && overDeposited && (
+            <span className="field-hint warn">
+              More than you can deposit or withdraw right now
+            </span>
+          )}
           <div className="earn-actions">
             <button
               className="btn primary"
               onClick={onDeposit}
-              disabled={busy === "earn-deposit" || !earnAmount}
+              disabled={busy === "earn-deposit" || !earnAmount || overAvailable}
             >
               <ArrowDownLeft size={16} />
               {busy === "earn-deposit" ? "Depositing…" : "Deposit"}
@@ -1008,7 +1145,9 @@ function EarnView(props: {
             <button
               className="btn soft"
               onClick={onWithdraw}
-              disabled={busy === "earn-withdraw" || !earnAmount}
+              disabled={
+                busy === "earn-withdraw" || !earnAmount || overDeposited
+              }
             >
               <ArrowUpRight size={16} />
               {busy === "earn-withdraw" ? "Withdrawing…" : "Withdraw"}
@@ -1036,6 +1175,120 @@ function EarnView(props: {
             <span>Pool size</span>
             <strong>
               {fmt(earn.poolTotal)} <small>sats</small>
+            </strong>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+// --- Gas view (sato-sponsor pool) ----------------------------------------
+function GasView(props: {
+  sponsor: SponsorStats;
+  topUpAmount: string;
+  setTopUpAmount: (v: string) => void;
+  onTopUp: () => void;
+  busy: string | null;
+}) {
+  const { sponsor, topUpAmount, setTopUpAmount, onTopUp, busy } = props;
+
+  return (
+    <>
+      <header className="page-head">
+        <div>
+          <h1>Gas</h1>
+          <p>Sato covers network fees from a shared STX pool.</p>
+        </div>
+        <a
+          className="btn soft"
+          href="https://platform.hiro.so/faucet"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ExternalLink size={16} /> Get testnet STX
+        </a>
+      </header>
+
+      <div className="stat-row">
+        <StatTile
+          label="Pool balance"
+          icon={Fuel}
+          big
+          value={
+            <>
+              {fmtStx(sponsor.poolBalance)} <small>STX</small>
+            </>
+          }
+          sub="Available to cover fees"
+        />
+        <StatTile
+          label="Your allowance"
+          icon={Zap}
+          value={
+            <>
+              {fmtStx(sponsor.remaining)} <small>STX</small>
+            </>
+          }
+          sub="Left in this window"
+        />
+        <StatTile
+          label="Sponsored"
+          icon={Hash}
+          value={String(sponsor.sponsoredCount)}
+          sub="Txs covered for you"
+        />
+      </div>
+
+      <div className="send-grid">
+        <section className="panel send-panel">
+          <label className="field-label">Contribute to the pool</label>
+          <div className="text-field block">
+            <input
+              className="field-input"
+              type="number"
+              min="0"
+              step="0.1"
+              placeholder="1.0"
+              value={topUpAmount}
+              onChange={(e) => setTopUpAmount(e.target.value)}
+            />
+            <span className="field-trail">STX</span>
+          </div>
+          <span className="field-hint muted">
+            Pool holds {fmtStx(sponsor.poolBalance)} STX · cap{" "}
+            {fmtStx(sponsor.cap)} STX per user each window
+          </span>
+          <button
+            className="btn primary full"
+            onClick={onTopUp}
+            disabled={busy === "topup" || !topUpAmount}
+          >
+            <Fuel size={16} />
+            {busy === "topup" ? "Adding…" : "Add to pool"}
+          </button>
+        </section>
+        <aside className="panel send-aside">
+          <span className="panel-eyebrow">How gas works</span>
+          <ul className="tips">
+            <li>
+              <span className="tip-dot" /> A shared STX pool{" "}
+              <b>reimburses network fees</b> so users needn't hold STX for gas.
+            </li>
+            <li>
+              <span className="tip-dot" /> Each account can be covered up to{" "}
+              <b>{fmtStx(sponsor.cap)} STX</b> per{" "}
+              {sponsor.windowLength.toString()}-block window.
+            </li>
+            <li>
+              <span className="tip-dot" /> Top-ups are <b>permissionless</b> —
+              anyone can keep the pool funded.
+            </li>
+          </ul>
+          <div className="aside-balance">
+            <span>Pool balance</span>
+            <strong>
+              {fmtStx(sponsor.poolBalance)} <small>STX</small>
             </strong>
           </div>
         </aside>
@@ -1185,6 +1438,7 @@ const shellStyles = `
 .field-hint.muted{color:var(--muted);}
 .field-hint.ok{color:#2f7d54;}
 .field-hint.miss{color:#b4341f;}
+.field-hint.warn{color:#b56a1f;}
 
 .send-panel .btn.full{margin-top:22px;}
 .earn-actions{display:flex;gap:10px;margin-top:22px;}
