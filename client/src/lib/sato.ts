@@ -92,6 +92,71 @@ export async function getBalance(who: string): Promise<bigint> {
   return BigInt(cvToValue(cv));
 }
 
+// A single on-chain action, normalized for the activity table.
+export interface SatoTx {
+  txId: string;
+  label: string; // human-readable action ("Sent sBTC", "Claimed username"…)
+  contract: string; // short contract name it touched
+  status: "success" | "pending" | "failed" | "abort";
+  time: number | null; // ms epoch, or null while pending
+}
+
+// Map a Sato contract-call to a friendly label.
+function labelFor(fn: string | undefined, contract: string): string {
+  switch (fn) {
+    case "send":
+      return "Sent sBTC";
+    case "deposit":
+      return "Added test sBTC";
+    case "register-name":
+      return "Claimed username";
+    case "transfer-name":
+      return "Transferred username";
+    default:
+      return fn ? fn.replace(/-/g, " ") : contract;
+  }
+}
+
+// Pull the connected wallet's recent transactions straight from the Hiro
+// testnet API — real on-chain history, no wallet needed to read it.
+export async function getRecentTransactions(
+  who: string,
+  limit = 12
+): Promise<SatoTx[]> {
+  try {
+    const res = await fetch(
+      `${API}/extended/v1/address/${who}/transactions?limit=${limit}`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const rows: any[] = data?.results ?? [];
+    return rows
+      .filter((tx) => tx?.tx_type === "contract_call")
+      .map((tx) => {
+        const contractId: string = tx.contract_call?.contract_id ?? "";
+        const contract = contractId.split(".")[1] ?? contractId;
+        const statusRaw: string = tx.tx_status ?? "";
+        const status: SatoTx["status"] = statusRaw.startsWith("success")
+          ? "success"
+          : statusRaw === "pending"
+            ? "pending"
+            : statusRaw.includes("abort")
+              ? "abort"
+              : "failed";
+        const iso = tx.burn_block_time_iso ?? tx.parent_burn_block_time_iso;
+        return {
+          txId: tx.tx_id,
+          label: labelFor(tx.contract_call?.function_name, contract),
+          contract,
+          status,
+          time: iso ? new Date(iso).getTime() : null,
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
 // --- writes (wallet) -----------------------------------------------------
 
 async function callContract(
