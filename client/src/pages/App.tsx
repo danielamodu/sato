@@ -3,8 +3,9 @@
 // A calm app-shell dashboard: left sidebar for navigation + account, a
 // main column with one view at a time (Overview, Send, Activity). The
 // goal is comfort — one clear number, plain language, generous space,
-// the orange accent used sparingly. This web layout sets the visual
-// precedent for the mobile app (sidebar collapses to a bottom tab bar).
+// black-and-white first with orange kept to small accents. This web
+// layout sets the visual precedent for the mobile app (sidebar
+// collapses to a bottom tab bar).
 //
 // Reads (balance, name lookups) hit the testnet API directly. Writes
 // (register, send, faucet) go through the connected wallet and surface
@@ -168,7 +169,9 @@ function SatoApp() {
         <div className="auth-panel">
           <div className="auth-top">
             <span className="auth-brand">
-              <span className="brand-mark">₿</span>
+              <span className="brand-mark">
+              <img src="/assets/sato-logo.png" alt="Sato" />
+            </span>
               <span className="brand-name">sato</span>
               <span className="brand-badge">testnet</span>
             </span>
@@ -251,7 +254,9 @@ function SatoApp() {
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="brand-mark">₿</span>
+          <span className="brand-mark">
+              <img src="/assets/sato-logo.png" alt="Sato" />
+            </span>
           <span className="brand-name">Sato</span>
           <span className="brand-badge">testnet</span>
         </div>
@@ -583,34 +588,35 @@ const shellStyles = `
 .auth-foot{font-size:12px;color:var(--muted);}
 
 /* Brand panel */
-.auth-brandside{position:relative;background:linear-gradient(150deg,#f15a24 0%,#ff7a45 42%,#ffa06b 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;overflow:hidden;}
-.brandside-glow{position:absolute;width:560px;height:560px;border-radius:50%;background:radial-gradient(circle,#ffffff40,transparent 62%);top:-120px;right:-160px;}
-.brandside-card{position:relative;z-index:1;width:min(100%,340px);background:var(--white);border-radius:20px;padding:24px;box-shadow:0 26px 60px #7a220e40;transform:rotate(-1.5deg);}
+.auth-brandside{position:relative;background:linear-gradient(155deg,#0d1117 0%,#141d2b 55%,#0d1117 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;overflow:hidden;}
+.brandside-glow{position:absolute;width:560px;height:560px;border-radius:50%;background:radial-gradient(circle,#f15a2426,transparent 62%);top:-120px;right:-160px;}
+.brandside-card{position:relative;z-index:1;width:min(100%,340px);background:var(--white);border-radius:20px;padding:24px;box-shadow:0 26px 60px #00000059;transform:rotate(-1.5deg);}
 .bs-eyebrow{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;}
 .bs-balance{display:flex;align-items:baseline;gap:7px;}
 .bs-balance b{font-size:36px;font-weight:700;letter-spacing:-.03em;}
 .bs-balance span{color:var(--text-muted);font-size:14px;font-weight:600;}
 .bs-send{display:flex;align-items:center;gap:10px;margin:20px 0 16px;padding:14px;background:var(--paper);border-radius:13px;}
-.bs-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#4f74ba;display:grid;place-items:center;font-size:12px;font-weight:700;}
+.bs-avatar{width:34px;height:34px;border-radius:10px;background:#e9e8e2;color:var(--ink);display:grid;place-items:center;font-size:12px;font-weight:700;}
 .bs-meta{display:flex;flex-direction:column;flex:1;}
 .bs-meta small{font-size:11px;color:var(--muted);}
 .bs-meta strong{font-size:14px;}
 .bs-send>svg{color:#2f7d54;}
-.bs-btn{background:var(--orange);color:#fff;border-radius:11px;padding:12px;text-align:center;font-size:14px;font-weight:600;}
-.brandside-tag{position:relative;z-index:1;color:#fff;font-size:16px;font-weight:600;letter-spacing:-.02em;margin:34px 0 0;text-align:center;text-shadow:0 1px 8px #7a220e30;}
+.bs-btn{background:var(--ink);color:#fff;border-radius:11px;padding:12px;text-align:center;font-size:14px;font-weight:600;}
+.brandside-tag{position:relative;z-index:1;color:#fff;font-size:16px;font-weight:600;letter-spacing:-.02em;margin:34px 0 0;text-align:center;text-shadow:0 1px 8px #00000040;}
 
 /* Sidebar */
 .sidebar{border-right:1px solid var(--line);padding:24px 16px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;background:var(--paper);}
 .sidebar-brand{display:flex;align-items:center;gap:9px;padding:4px 10px 24px;}
-.brand-mark{width:30px;height:30px;border-radius:9px;background:var(--orange);color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px;}
-.brand-mark.lg{width:52px;height:52px;border-radius:15px;font-size:26px;margin:0 auto;}
+.brand-mark{width:30px;height:30px;border-radius:9px;overflow:hidden;background:#000;display:grid;place-items:center;flex-shrink:0;}
+.brand-mark img{width:100%;height:100%;object-fit:cover;display:block;}
 .brand-name{font-weight:700;font-size:17px;letter-spacing:-.02em;}
 .brand-badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:var(--mint);color:var(--navy);padding:2px 7px;border-radius:999px;font-weight:700;}
 .sidebar-nav{display:flex;flex-direction:column;gap:2px;flex:1;}
 .nav-item{display:flex;align-items:center;gap:11px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:11px 12px;border-radius:11px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:background .14s,color .14s;text-align:left;}
 .nav-item:hover{background:#ecebe5;color:var(--ink);}
 .nav-item.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
-.nav-item.active svg{color:var(--orange);}
+.nav-item.active svg{color:var(--ink);}
+.nav-item.active::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--orange);margin-left:auto;flex-shrink:0;}
 .sidebar-account{border-top:1px solid var(--line);padding-top:14px;margin-top:14px;}
 .account-row{display:flex;align-items:center;gap:10px;padding:4px 6px;}
 .account-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#4f74ba;display:grid;place-items:center;font-size:12px;font-weight:700;}
@@ -642,7 +648,7 @@ const shellStyles = `
 
 .inline-form{display:flex;gap:10px;}
 .text-field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:var(--paper);flex:1;transition:border-color .14s,box-shadow .14s;}
-.text-field:focus-within{border-color:var(--orange);box-shadow:0 0 0 3px #f15a2418;}
+.text-field:focus-within{border-color:var(--ink);box-shadow:0 0 0 3px #0d111714;}
 .text-field.block{width:100%;margin-bottom:4px;}
 .field-at{color:var(--text-muted);font-weight:700;}
 .field-lead{color:var(--muted);flex-shrink:0;}
@@ -667,8 +673,8 @@ const shellStyles = `
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:12px;padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:transform .1s var(--ease),opacity .15s,background .15s;text-decoration:none;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 .btn:not(:disabled):active{transform:translateY(1px);}
-.btn.primary{background:var(--orange);color:#fff;}
-.btn.primary:not(:disabled):hover{background:#e04f1e;}
+.btn.primary{background:var(--ink);color:#fff;}
+.btn.primary:not(:disabled):hover{background:#20293a;}
 .btn.soft{background:var(--paper);border:1px solid var(--line);color:var(--ink);}
 .btn.soft:hover{background:#ecebe5;}
 .btn.full{width:100%;}
@@ -686,7 +692,7 @@ const shellStyles = `
   .main{padding:28px 20px 96px;max-width:100%;}
   .tab-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));z-index:20;}
   .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;border:0;background:transparent;color:var(--text-muted);padding:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);}
-  .tab.active{color:var(--orange);}
+  .tab.active{color:var(--ink);}
   .balance-num{font-size:40px;}
 }
 `;
