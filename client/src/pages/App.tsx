@@ -527,7 +527,19 @@ function SatoApp() {
             <span className="account-avatar">{initials}</span>
             <span className="account-meta">
               <strong>{myName ? `@${myName}` : "Unnamed"}</strong>
-              <small>{short(address)}</small>
+              <span className="account-addr">
+                <small>{short(address)}</small>
+                <CopyButton value={address} />
+                <a
+                  className="account-explorer"
+                  href={explorerAddr(address)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="View on explorer"
+                >
+                  <ExternalLink size={12} />
+                </a>
+              </span>
             </span>
           </div>
           <button className="account-signout" onClick={disconnectWallet}>
@@ -905,21 +917,6 @@ function Overview(props: {
                 )}
               </>
             )}
-          </section>
-          <section className="panel acct-card">
-            <span className="panel-eyebrow">Account</span>
-            <div className="acct-addr">
-              <span className="mono">{short(address)}</span>
-              <CopyButton value={address} />
-            </div>
-            <a
-              className="acct-link"
-              href={explorerAddr(address)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View on explorer <ExternalLink size={13} />
-            </a>
           </section>
         </div>
       </div>
@@ -1467,6 +1464,9 @@ const shellStyles = `
 .account-meta{display:flex;flex-direction:column;min-width:0;}
 .account-meta strong{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .account-meta small{font-size:11.5px;color:var(--muted);font-family:var(--mono);}
+.account-addr{display:flex;align-items:center;gap:5px;}
+.account-explorer{display:inline-flex;color:var(--muted);padding:1px;border-radius:6px;transition:color .14s;}
+.account-explorer:hover{color:var(--ink);}
 .account-signout{display:flex;align-items:center;gap:7px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:9px 6px;margin-top:6px;border-radius:9px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
 .account-signout:hover{color:var(--ink);background:#ecebe5;}
 
@@ -1576,13 +1576,10 @@ const shellStyles = `
 .tx-empty .empty-icon{margin-bottom:14px;}
 .tx-empty-link{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--ink);}
 
-/* Account card */
-.acct-addr{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+/* Copy button + mono address */
 .mono{font-family:var(--mono);font-size:13px;color:var(--ink);}
 .icon-btn{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--paper);color:var(--text-muted);cursor:pointer;transition:color .14s,background .14s;}
 .icon-btn:hover{color:var(--ink);background:#ecebe5;}
-.acct-link{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--text-muted);transition:color .14s;}
-.acct-link:hover{color:var(--ink);}
 
 /* Send view */
 .send-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;align-items:start;}
