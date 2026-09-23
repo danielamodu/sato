@@ -33,7 +33,10 @@ import {
   TrendingUp,
   Fuel,
   Zap,
+  QrCode,
+  Share2,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { StacksProvider, useStacks } from "@/contexts/StacksContext";
 import {
   registerName,
@@ -136,7 +139,7 @@ function txidOf(res: any): string | undefined {
   return res?.txid ?? res?.txId ?? res?.result?.txid;
 }
 
-type View = "overview" | "send" | "earn" | "gas" | "activity";
+type View = "overview" | "send" | "receive" | "earn" | "gas" | "activity";
 
 function SatoApp() {
   const { address, isConnecting, connectWallet, disconnectWallet } = useStacks();
@@ -233,6 +236,38 @@ function SatoApp() {
       alive = false;
       clearInterval(id);
     };
+  }, []);
+
+  // Honor a payment link (?to=@name|address&amount=sats): prefill the Send
+  // form and jump to it, so a shared Sato link lands the payer on a ready-to-
+  // send screen. We resolve a @username to its principal, then wipe the query
+  // from the URL so a refresh doesn't replay it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const to = params.get("to");
+    if (!to) return;
+    const amt = params.get("amount");
+    setView("send");
+    if (amt && /^\d+$/.test(amt)) setSendAmount(amt);
+    const raw = to.trim().replace(/^@/, "");
+    if (raw.startsWith("S")) {
+      setSendTo(raw); // already a principal
+    } else {
+      setSendTo(raw);
+      setLookupState("pending");
+      resolveName(raw)
+        .then((owner) => {
+          if (owner) {
+            setSendTo(owner);
+            setLookupState("found");
+          } else {
+            setLookupState("missing");
+          }
+        })
+        .catch(() => setLookupState("missing"));
+    }
+    window.history.replaceState({}, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Live username availability — debounced read of the on-chain registry so
@@ -530,6 +565,7 @@ function SatoApp() {
   const nav: { id: View; label: string; icon: typeof LayoutGrid }[] = [
     { id: "overview", label: "Overview", icon: LayoutGrid },
     { id: "send", label: "Send", icon: Send },
+    { id: "receive", label: "Receive", icon: QrCode },
     { id: "earn", label: "Earn", icon: TrendingUp },
     { id: "gas", label: "Gas", icon: Fuel },
     { id: "activity", label: "Activity", icon: Receipt },
@@ -618,6 +654,7 @@ function SatoApp() {
             onRegister={onRegister}
             onFaucet={onFaucet}
             goSend={() => setView("send")}
+            goReceive={() => setView("receive")}
             goActivity={() => setView("activity")}
             busy={busy}
             address={address}
@@ -642,6 +679,14 @@ function SatoApp() {
             setGasless={setGasless}
             sponsorReady={sponsor.poolBalance > 0n}
             busy={busy}
+          />
+        )}
+
+        {view === "receive" && (
+          <ReceiveView
+            address={address}
+            myName={myName}
+            goClaim={() => setView("overview")}
           />
         )}
 
@@ -825,6 +870,7 @@ function Overview(props: {
   onRegister: () => void;
   onFaucet: () => void;
   goSend: () => void;
+  goReceive: () => void;
   goActivity: () => void;
   busy: string | null;
   address: string;
@@ -841,6 +887,7 @@ function Overview(props: {
     onRegister,
     onFaucet,
     goSend,
+    goReceive,
     goActivity,
     busy,
     address,
@@ -913,9 +960,14 @@ function Overview(props: {
           <section className="panel">
             <span className="panel-eyebrow">Quick actions</span>
             <div className="stack-actions">
-              <button className="btn primary full" onClick={goSend}>
-                <Send size={16} /> Send sBTC
-              </button>
+              <div className="action-pair">
+                <button className="btn primary" onClick={goSend}>
+                  <Send size={16} /> Send
+                </button>
+                <button className="btn soft" onClick={goReceive}>
+                  <ArrowDownLeft size={16} /> Receive
+                </button>
+              </div>
               <button
                 className="btn soft full"
                 onClick={onFaucet}
@@ -1165,6 +1217,152 @@ function SendView(props: {
           </strong>
         </div>
       </aside>
+      </div>
+    </>
+  );
+}
+
+// --- Receive view --------------------------------------------------------
+// Completes the payments loop: your @username / address as a scannable code
+// and a shareable link (…/app?to=<handle>) that drops the payer on a prefilled
+// Send screen. Everything is derived from the connected wallet — no invented
+// data. Falls back to the raw principal when no name is claimed.
+function ReceiveView(props: {
+  address: string;
+  myName: string | null;
+  goClaim: () => void;
+}) {
+  const { address, myName, goClaim } = props;
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // Prefer the @username in the link — cleaner, and it outlives any one wallet.
+  const handle = myName ?? address;
+  const payLink = `${origin}/app?to=${encodeURIComponent(handle)}`;
+
+  const copy = (text: string, label: string) => {
+    navigator.clipboard?.writeText(text);
+    toast.success(`${label} copied`);
+  };
+
+  const share = async () => {
+    // Native share sheet on mobile; otherwise fall back to copying the link.
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "Pay me on Sato",
+          text: myName
+            ? `Send me sBTC on Sato — @${myName}`
+            : "Send me sBTC on Sato",
+          url: payLink,
+        });
+      } catch {
+        /* user dismissed the sheet — not an error */
+      }
+      return;
+    }
+    copy(payLink, "Payment link");
+  };
+  return (
+    <>
+      <header className="page-head">
+        <div>
+          <h1>Receive sBTC</h1>
+          <p>Share your code or link to get paid.</p>
+        </div>
+      </header>
+
+      <div className="send-grid">
+        <section className="panel receive-panel">
+          <div className="qr-frame">
+            <QRCodeSVG
+              value={payLink}
+              size={188}
+              level="H"
+              bgColor="#ffffff"
+              fgColor="#0d1117"
+              marginSize={0}
+              imageSettings={{
+                src: "/assets/sato-logo.png",
+                height: 38,
+                width: 38,
+                excavate: true,
+              }}
+            />
+          </div>
+
+          <div className="receive-handle">
+            {myName ? (
+              <>
+                <span className="receive-at">@</span>
+                <span className="receive-name">{myName}</span>
+              </>
+            ) : (
+              <span className="receive-name unnamed">{short(address)}</span>
+            )}
+          </div>
+          {myName ? (
+            <p className="receive-note">
+              Scan the code or open the link — anyone can pay you at{" "}
+              <b>@{myName}</b>.
+            </p>
+          ) : (
+            <p className="receive-note">
+              You can still receive to your address. Claim a{" "}
+              <button className="link-btn" onClick={goClaim}>
+                @username
+              </button>{" "}
+              for a cleaner code and link.
+            </p>
+          )}
+
+          <div className="receive-actions">
+            <button className="btn primary" onClick={share}>
+              <Share2 size={16} /> Share link
+            </button>
+            <button
+              className="btn soft"
+              onClick={() => copy(payLink, "Payment link")}
+            >
+              <Copy size={15} /> Copy link
+            </button>
+          </div>
+        </section>
+        <aside className="panel send-aside">
+          <span className="panel-eyebrow">Your address</span>
+          <div className="receive-addr">
+            <span className="mono receive-addr-val">{address}</span>
+            <div className="receive-addr-row">
+              <button
+                className="btn soft sm"
+                onClick={() => copy(address, "Address")}
+              >
+                <Copy size={14} /> Copy
+              </button>
+              <a
+                className="btn soft sm"
+                href={explorerAddr(address)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink size={14} /> Explorer
+              </a>
+            </div>
+          </div>
+          <ul className="tips">
+            <li>
+              <span className="tip-dot" /> Anyone can pay you by scanning your{" "}
+              <b>code</b> or opening your <b>link</b> — it prefills their Send.
+            </li>
+            <li>
+              <span className="tip-dot" /> A <b>@username</b> is easier to share
+              than a raw address, and it never changes.
+            </li>
+            <li>
+              <span className="tip-dot" /> Payments settle on-chain straight to
+              your wallet — nothing is custodial.
+            </li>
+          </ul>
+        </aside>
       </div>
     </>
   );
@@ -1687,6 +1885,27 @@ const shellStyles = `
 .aside-balance small{font-size:12px;color:var(--text-muted);font-weight:600;}
 .explorer-cta{display:inline-flex;align-items:center;gap:6px;margin-top:4px;font-size:13px;font-weight:600;color:var(--text-muted);transition:color .14s;}
 .explorer-cta:hover{color:var(--ink);}
+
+/* Quick-action pair (Overview) */
+.action-pair{display:flex;gap:10px;}
+.action-pair .btn{flex:1;}
+
+/* Receive view */
+.receive-panel{display:flex;flex-direction:column;align-items:center;text-align:center;}
+.qr-frame{padding:16px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 1px 2px #16202814;line-height:0;}
+.receive-handle{display:flex;align-items:baseline;gap:1px;margin:20px 0 0;}
+.receive-at{font-size:22px;font-weight:700;color:var(--text-muted);}
+.receive-name{font-size:26px;font-weight:700;letter-spacing:-.03em;color:var(--ink);}
+.receive-name.unnamed{font-size:18px;font-family:var(--mono);letter-spacing:0;}
+.receive-note{color:var(--text-muted);font-size:13.5px;line-height:1.6;max-width:320px;margin:10px 0 0;}
+.receive-note b{color:var(--ink);font-weight:700;}
+.link-btn{border:0;background:transparent;color:var(--orange);font-weight:700;cursor:pointer;font-family:var(--sans);font-size:inherit;padding:0;text-decoration:underline;text-underline-offset:2px;}
+.receive-actions{display:flex;gap:10px;margin-top:22px;width:100%;}
+.receive-actions .btn{flex:1;}
+.receive-addr{margin-bottom:20px;}
+.receive-addr-val{display:block;word-break:break-all;font-size:12.5px;line-height:1.5;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;}
+.receive-addr-row{display:flex;gap:8px;}
+.receive-addr-row .btn{flex:1;}
 
 /* Small button + spinner */
 .btn.sm{padding:8px 12px;font-size:12.5px;border-radius:9px;}
