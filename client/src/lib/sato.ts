@@ -1,9 +1,10 @@
 // sato.ts — thin client for Sato's live testnet contracts.
 //
-// Wraps the three contracts a user touches in the demo flow:
-//   - sato-names:    register-name, resolve-name, get-name
+// Wraps the four contracts a user touches in the demo flow:
+//   - sato-names:    register-name, resolve-name, get-name, is-name-available
 //   - sato-transfer: send, deposit (faucet), get-balance
 //   - sato-yield:    deposit, withdraw, fund-sbtc, get-balance, get-yield
+//   - sato-sponsor:  top-up, get-sponsor-balance, get-remaining-allowance
 //
 // Reads hit the testnet API directly (no wallet needed). Writes go through
 // the connected wallet via @stacks/connect's `request("stx_callContract")`.
@@ -24,6 +25,7 @@ export const CONTRACTS = {
   names: { address: DEPLOYER, name: "sato-names" },
   transfer: { address: DEPLOYER, name: "sato-transfer" },
   earn: { address: DEPLOYER, name: "sato-yield" },
+  sponsor: { address: DEPLOYER, name: "sato-sponsor" },
 } as const;
 
 const API = "https://api.testnet.hiro.so";
@@ -97,6 +99,18 @@ export async function getName(owner: string): Promise<string | null> {
   return optionalString(cvToValue(cv));
 }
 
+// Is a @username still unclaimed? Reads the registry live so the claim
+// form can confirm a handle before the user spends a transaction on it.
+export async function isNameAvailable(name: string): Promise<boolean> {
+  const cv = await readOnly(
+    CONTRACTS.names,
+    "is-name-available",
+    [Cl.stringAscii(name)],
+    DEPLOYER
+  );
+  return cvToValue(cv) === true; // read-only returns a bare bool
+}
+
 // Get a principal's sBTC balance (in sats) from the transfer ledger.
 export async function getBalance(who: string): Promise<bigint> {
   const cv = await readOnly(
@@ -129,6 +143,14 @@ function labelFor(fn: string | undefined, contract: string): string {
         return "Added test sBTC";
       case "add-yield":
         return "Yield distributed";
+    }
+  }
+  if (contract === "sato-sponsor") {
+    switch (fn) {
+      case "top-up":
+        return "Funded gas pool";
+      case "sponsor-tx":
+        return "Gas sponsored";
     }
   }
   switch (fn) {
@@ -261,4 +283,51 @@ export function earnWithdraw(amount: bigint) {
 // sBTC available to deposit into the pool.
 export function fundEarn(amount: bigint) {
   return callContract(CONTRACTS.earn, "fund-sbtc", [Cl.uint(amount)]);
+}
+
+// --- gas sponsorship (sato-sponsor pool) --------------------------------
+
+// The live state of the shared gas pool, plus this user's coverage.
+// All amounts are micro-STX (1 STX = 1,000,000 micro-STX).
+export interface SponsorStats {
+  poolBalance: bigint; // STX held in the pool, ready to reimburse fees
+  remaining: bigint; // still sponsorable for this user in the current window
+  cap: bigint; // per-user allowance per window
+  sponsoredCount: bigint; // lifetime txs sponsored for this user
+  windowLength: bigint; // length of a cap window, in blocks
+}
+
+// Read the whole sponsor picture for a user in one shot (five reads).
+export async function getSponsorStats(who: string): Promise<SponsorStats> {
+  const [poolBalance, remaining, cap, sponsoredCount, windowLength] =
+    await Promise.all([
+      readOnly(CONTRACTS.sponsor, "get-sponsor-balance", [], who),
+      readOnly(
+        CONTRACTS.sponsor,
+        "get-remaining-allowance",
+        [Cl.principal(who)],
+        who
+      ),
+      readOnly(CONTRACTS.sponsor, "get-per-user-cap", [], who),
+      readOnly(
+        CONTRACTS.sponsor,
+        "get-sponsored-count",
+        [Cl.principal(who)],
+        who
+      ),
+      readOnly(CONTRACTS.sponsor, "get-window-length", [], who),
+    ]);
+  return {
+    poolBalance: toBigInt(cvToValue(poolBalance)),
+    remaining: toBigInt(cvToValue(remaining)),
+    cap: toBigInt(cvToValue(cap)),
+    sponsoredCount: toBigInt(cvToValue(sponsoredCount)),
+    windowLength: toBigInt(cvToValue(windowLength)),
+  };
+}
+
+// Chip micro-STX into the shared gas pool. Permissionless — anyone can
+// help cover everyone's transaction fees.
+export function sponsorTopUp(amount: bigint) {
+  return callContract(CONTRACTS.sponsor, "top-up", [Cl.uint(amount)]);
 }
