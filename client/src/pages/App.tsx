@@ -11,7 +11,7 @@
 // (register, send, faucet) go through the connected wallet and surface
 // an explorer link on submit.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   Wallet,
@@ -35,8 +35,9 @@ import {
   Zap,
   QrCode,
   Share2,
+  Download,
 } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import { StacksProvider, useStacks } from "@/contexts/StacksContext";
 import {
   registerName,
@@ -61,6 +62,36 @@ import {
 } from "@/lib/sato";
 
 const short = (a: string) => `${a.slice(0, 5)}…${a.slice(-4)}`;
+
+// Load an <img> and resolve once it's ready, for drawing onto a canvas.
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Path a rounded rectangle (broader support than ctx.roundRect).
+function roundRect(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const rr = Math.min(r, w / 2, h / 2);
+  g.beginPath();
+  g.moveTo(x + rr, y);
+  g.arcTo(x + w, y, x + w, y + h, rr);
+  g.arcTo(x + w, y + h, x, y + h, rr);
+  g.arcTo(x, y + h, x, y, rr);
+  g.arcTo(x, y, x + w, y, rr);
+  g.closePath();
+}
 const fmt = (n: bigint) => n.toLocaleString();
 // micro-STX (1e6 = 1 STX) → a friendly STX string for the gas pool.
 const fmtStx = (micro: bigint) =>
@@ -1262,8 +1293,158 @@ function ReceiveView(props: {
     }
     copy(payLink, "Payment link");
   };
+
+  const qrWrapRef = useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Rasterize a shareable "pay me" card to PNG and download it. Pure canvas —
+  // no extra dependency, and nothing taints the export (logo + QR are
+  // same-origin). Dark card keeps black primary; orange stays a tiny accent.
+  const downloadCard = async () => {
+    const src = qrWrapRef.current?.querySelector("canvas");
+    if (!src) return;
+    setSaving(true);
+    try {
+      try {
+        await Promise.all([
+          document.fonts.load("800 88px Manrope"),
+          document.fonts.load("600 34px Manrope"),
+          document.fonts.load("500 28px Manrope"),
+        ]);
+        await document.fonts.ready;
+      } catch {
+        /* fall back to sans-serif — still legible */
+      }
+      const logo = await loadImage("/assets/sato-logo.png").catch(() => null);
+      const W = 1080;
+      const H = 1350;
+      const c = document.createElement("canvas");
+      c.width = W;
+      c.height = H;
+      const g = c.getContext("2d");
+      if (!g) return;
+      const cx = W / 2;
+      // Paper backdrop + inset rounded ink card with a soft drop shadow.
+      g.fillStyle = "#f5f4ef";
+      g.fillRect(0, 0, W, H);
+      const m = 48;
+      g.save();
+      g.shadowColor = "rgba(13,17,23,0.22)";
+      g.shadowBlur = 48;
+      g.shadowOffsetY = 22;
+      roundRect(g, m, m, W - 2 * m, H - 2 * m, 56);
+      g.fillStyle = "#0d1117";
+      g.fill();
+      g.restore();
+      roundRect(g, m, m, W - 2 * m, H - 2 * m, 56);
+      g.strokeStyle = "rgba(255,255,255,0.06)";
+      g.lineWidth = 2;
+      g.stroke();
+
+      // Logo mark near the top.
+      if (logo) {
+        const lh = 82;
+        const lw = (logo.naturalWidth / logo.naturalHeight) * lh || lh;
+        g.drawImage(logo, cx - lw / 2, 118, lw, lh);
+      }
+
+      // White QR tile with the QR centered inside.
+      const tile = 560;
+      const tileY = 248;
+      g.save();
+      g.shadowColor = "rgba(0,0,0,0.30)";
+      g.shadowBlur = 40;
+      g.shadowOffsetY = 16;
+      roundRect(g, cx - tile / 2, tileY, tile, tile, 44);
+      g.fillStyle = "#ffffff";
+      g.fill();
+      g.restore();
+      const q = 452;
+      g.drawImage(src, cx - q / 2, tileY + (tile - q) / 2, q, q);
+      // Handle (@username or short address), auto-fit to width.
+      const handleText = myName ? `@${myName}` : short(address);
+      let hs = 88;
+      g.textAlign = "center";
+      const maxW = W - 260;
+      do {
+        g.font = `800 ${hs}px Manrope, sans-serif`;
+        if (g.measureText(handleText).width <= maxW) break;
+        hs -= 4;
+      } while (hs > 40);
+      g.fillStyle = "#ffffff";
+      g.fillText(handleText, cx, 946);
+
+      // Subtitle.
+      g.font = "600 34px Manrope, sans-serif";
+      g.fillStyle = "#8791a0";
+      g.fillText("Scan to pay me on Sato", cx, 1000);
+
+      // Address — shown only when a @username already headlines the card.
+      if (myName) {
+        g.font = "500 28px Manrope, sans-serif";
+        g.fillStyle = "#6e7784";
+        g.fillText(short(address), cx, 1086);
+      }
+
+      // Small orange accent rule (brand: orange only on little things).
+      roundRect(g, cx - 34, 1128, 68, 5, 3);
+      g.fillStyle = "#f15a24";
+      g.fill();
+
+      // Footer tagline.
+      g.font = "600 27px Manrope, sans-serif";
+      g.fillStyle = "#8791a0";
+      g.fillText("sato · send bitcoin like a text", cx, 1188);
+      const blob = await new Promise<Blob | null>((res) =>
+        c.toBlob(res, "image/png"),
+      );
+      if (!blob) throw new Error("no blob");
+      const fname =
+        (myName ?? "wallet").replace(/[^a-z0-9_-]/gi, "") || "wallet";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sato-${fname}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Card saved to your downloads");
+    } catch {
+      toast.error("Couldn't create the card");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
+      {/* Offscreen high-res QR, rasterized into the downloadable card. */}
+      <div
+        ref={qrWrapRef}
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: -99999,
+          top: 0,
+          pointerEvents: "none",
+        }}
+      >
+        <QRCodeCanvas
+          value={payLink}
+          size={520}
+          level="H"
+          bgColor="#ffffff"
+          fgColor="#0d1117"
+          marginSize={0}
+          imageSettings={{
+            src: "/assets/sato-logo.png",
+            height: 104,
+            width: 104,
+            excavate: true,
+          }}
+        />
+      </div>
       <header className="page-head">
         <div>
           <h1>Receive sBTC</h1>
@@ -1316,15 +1497,24 @@ function ReceiveView(props: {
           )}
 
           <div className="receive-actions">
-            <button className="btn primary" onClick={share}>
-              <Share2 size={16} /> Share link
-            </button>
             <button
-              className="btn soft"
-              onClick={() => copy(payLink, "Payment link")}
+              className="btn primary full"
+              onClick={downloadCard}
+              disabled={saving}
             >
-              <Copy size={15} /> Copy link
+              <Download size={16} /> {saving ? "Creating…" : "Download card"}
             </button>
+            <div className="receive-sub-actions">
+              <button className="btn soft" onClick={share}>
+                <Share2 size={15} /> Share link
+              </button>
+              <button
+                className="btn soft"
+                onClick={() => copy(payLink, "Payment link")}
+              >
+                <Copy size={15} /> Copy link
+              </button>
+            </div>
           </div>
         </section>
         <aside className="panel send-aside">
@@ -1900,8 +2090,9 @@ const shellStyles = `
 .receive-note{color:var(--text-muted);font-size:13.5px;line-height:1.6;max-width:320px;margin:10px 0 0;}
 .receive-note b{color:var(--ink);font-weight:700;}
 .link-btn{border:0;background:transparent;color:var(--orange);font-weight:700;cursor:pointer;font-family:var(--sans);font-size:inherit;padding:0;text-decoration:underline;text-underline-offset:2px;}
-.receive-actions{display:flex;gap:10px;margin-top:22px;width:100%;}
-.receive-actions .btn{flex:1;}
+.receive-actions{display:flex;flex-direction:column;gap:10px;margin-top:22px;width:100%;}
+.receive-sub-actions{display:flex;gap:10px;}
+.receive-sub-actions .btn{flex:1;}
 .receive-addr{margin-bottom:20px;}
 .receive-addr-val{display:block;word-break:break-all;font-size:12.5px;line-height:1.5;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;}
 .receive-addr-row{display:flex;gap:8px;}
