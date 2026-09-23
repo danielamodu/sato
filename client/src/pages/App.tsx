@@ -352,6 +352,7 @@ function SatoApp() {
 
       {/* Main column */}
       <main className="main">
+        <div className="view" key={view}>
         {view === "overview" && (
           <Overview
             balance={balance}
@@ -392,6 +393,7 @@ function SatoApp() {
             reload={() => refresh(address)}
           />
         )}
+        </div>
       </main>
 
       {/* Mobile bottom tabs */}
@@ -961,7 +963,7 @@ const shellStyles = `
 
 /* Stat tiles */
 .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;}
-.stat-tile{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:9px;}
+.stat-tile{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:9px;transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;}
 .stat-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .stat-label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
 .stat-ico{width:28px;height:28px;border-radius:8px;background:var(--paper);border:1px solid var(--line);display:grid;place-items:center;color:var(--text-muted);flex-shrink:0;}
@@ -1033,9 +1035,39 @@ const shellStyles = `
 .spin{animation:spin 1s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
+/* --- Motion ------------------------------------------------------------ */
+@keyframes fade-up{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@keyframes fade-in{from{opacity:0;}to{opacity:1;}}
+@keyframes float-card{0%,100%{transform:rotate(-1.5deg) translateY(0);}50%{transform:rotate(-1.5deg) translateY(-9px);}}
+
+/* View entrance — staggered; re-runs on tab switch via key={view} */
+.view>*{animation:fade-up .5s var(--ease) both;}
+.view>*:nth-child(2){animation-delay:.07s;}
+.view>*:nth-child(3){animation-delay:.14s;}
+.view>*:nth-child(4){animation-delay:.21s;}
+
+/* Transaction rows drift in on load */
+.tx-list .tx-row{animation:fade-up .45s var(--ease) both;}
+.tx-list .tx-row:nth-child(2){animation-delay:.05s;}
+.tx-list .tx-row:nth-child(3){animation-delay:.1s;}
+.tx-list .tx-row:nth-child(4){animation-delay:.15s;}
+.tx-list .tx-row:nth-child(n+5){animation-delay:.2s;}
+
+/* Sign-in entrance + floating preview card */
+.auth-body>*{animation:fade-up .55s var(--ease) both;}
+.auth-body>*:nth-child(2){animation-delay:.06s;}
+.auth-body>*:nth-child(3){animation-delay:.12s;}
+.auth-body>*:nth-child(4){animation-delay:.18s;}
+.auth-body>*:nth-child(5){animation-delay:.24s;}
+.brandside-card{animation:fade-in .6s var(--ease) both,float-card 7s ease-in-out 1.4s infinite;}
+
+/* Hover micro-interactions */
+.stat-tile:hover{transform:translateY(-2px);border-color:#cdd0ca;box-shadow:0 8px 22px #1620281a;}
+
 /* Buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:12px;padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:transform .1s var(--ease),opacity .15s,background .15s;text-decoration:none;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn:not(:disabled):hover{transform:translateY(-1px);}
 .btn:not(:disabled):active{transform:translateY(1px);}
 .btn.primary{background:var(--ink);color:#fff;}
 .btn.primary:not(:disabled):hover{background:#20293a;}
@@ -1061,10 +1093,27 @@ const shellStyles = `
   .sidebar{display:none;}
   .main{padding:28px 20px 96px;max-width:100%;}
   .page-head{flex-wrap:wrap;}
-  .tab-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));z-index:20;}
-  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;border:0;background:transparent;color:var(--text-muted);padding:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);}
+  .tab-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));z-index:20;box-shadow:0 -6px 20px #16202810;}
+  .tab{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:transparent;color:var(--text-muted);padding:9px 6px;min-height:52px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .18s;-webkit-tap-highlight-color:transparent;}
+  .tab svg{transition:transform .22s var(--ease);}
   .tab.active{color:var(--ink);}
+  .tab.active svg{transform:translateY(-1px) scale(1.06);}
+  .tab::before{content:"";position:absolute;top:0;left:50%;width:26px;height:2.5px;border-radius:0 0 4px 4px;background:var(--orange);transform:translateX(-50%) scaleX(0);transform-origin:center;transition:transform .28s var(--ease);}
+  .tab.active::before{transform:translateX(-50%) scaleX(1);}
   .balance-num{font-size:40px;}
+}
+@media(max-width:480px){
+  .main{padding:22px 16px 94px;}
+  .panel{padding:20px;border-radius:16px;}
+  .page-head .btn{width:100%;}
+  .auth-panel{padding:24px 20px;}
+  .auth-points{gap:9px;}
+  .balance-num{font-size:36px;}
+  .stat-tile.big .stat-value{font-size:26px;}
+}
+@media(prefers-reduced-motion:reduce){
+  .view>*,.tx-list .tx-row,.auth-body>*,.brandside-card,.spin{animation:none !important;}
+  *{transition-duration:.01ms !important;}
 }
 `;
 
