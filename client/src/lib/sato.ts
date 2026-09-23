@@ -237,6 +237,60 @@ export function sendSbtc(recipient: string, amount: bigint) {
   ]);
 }
 
+// --- gasless sends (sponsored-transaction protocol) ----------------------
+
+// The co-signer endpoint (api/sponsor.ts): it holds a funded STX key, pays
+// the miner fee, and broadcasts. Same-origin on Vercel.
+const SPONSOR_ENDPOINT = "/api/sponsor";
+
+// Raised when the connected wallet signed but didn't hand back a serialized
+// tx — i.e. it ignored `sponsored:true` (older wallets). Callers can catch
+// this and fall back to a normal, user-pays send.
+export const NO_SPONSORED_TX = "WALLET_NO_SPONSORED_TX";
+
+// Ask the wallet to SIGN (not broadcast) a `sponsored:true` contract call,
+// then hand the serialized tx to the co-signer, which fills in the fee, signs
+// as sponsor, and broadcasts. Returns the broadcast txId. The user pays no gas.
+async function sponsoredCall(
+  contract: { address: string; name: string },
+  functionName: string,
+  functionArgs: ClarityValue[]
+): Promise<string> {
+  const res = await request("stx_callContract", {
+    contract: `${contract.address}.${contract.name}`,
+    functionName,
+    functionArgs,
+    network: NETWORK,
+    sponsored: true, // wallet signs but leaves fee/sponsor-nonce blank
+  });
+  // A sponsored call can't be broadcast by the wallet (no fee yet), so instead
+  // of a txid it returns the serialized, origin-signed tx for us to co-sign.
+  const txHex = (res as { transaction?: string }).transaction;
+  if (!txHex) throw new Error(NO_SPONSORED_TX);
+
+  const resp = await fetch(SPONSOR_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ txHex }),
+  });
+  const data = (await resp.json().catch(() => ({}))) as {
+    txId?: string;
+    error?: string;
+  };
+  if (!resp.ok || !data.txId) {
+    throw new Error(data.error || "Gas sponsor rejected the transaction.");
+  }
+  return data.txId;
+}
+
+// Send sBTC gaslessly: the gas pool covers the fee. Returns the txId.
+export function sendSbtcSponsored(recipient: string, amount: bigint) {
+  return sponsoredCall(CONTRACTS.transfer, "send", [
+    Cl.principal(recipient),
+    Cl.uint(amount),
+  ]);
+}
+
 // Devnet/testnet faucet: credit the caller's own balance so they have
 // something to send. Backed by sato-transfer's mint helper.
 export function fundSelf(amount: bigint) {

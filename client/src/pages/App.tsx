@@ -41,6 +41,8 @@ import {
   getName,
   getBalance,
   sendSbtc,
+  sendSbtcSponsored,
+  NO_SPONSORED_TX,
   fundSelf,
   getRecentTransactions,
   getEarnStats,
@@ -131,6 +133,7 @@ function SatoApp() {
     windowLength: 0n,
   });
   const [topUpAmount, setTopUpAmount] = useState("");
+  const [gasless, setGasless] = useState(true);
   const [nameState, setNameState] = useState<
     "idle" | "checking" | "available" | "taken"
   >("idle");
@@ -240,6 +243,29 @@ function SatoApp() {
     if (!sendTo || amount <= 0n) return;
     setBusy("send");
     try {
+      // Gasless path: the wallet signs a sponsored tx, the co-signer pays the
+      // fee and broadcasts. If the wallet can't produce a sponsored tx, fall
+      // back to a normal (user-pays) send so the user is never stuck.
+      if (gasless) {
+        try {
+          const txId = await sendSbtcSponsored(sendTo, amount);
+          toast.success(`Sent ${fmt(amount)} sats — gas covered`, {
+            description: `to ${short(sendTo)}`,
+            action: {
+              label: "View",
+              onClick: () => window.open(explorerTx(txId)),
+            },
+          });
+          setSendAmount("");
+          if (address) setTimeout(() => refresh(address), 4000);
+          return;
+        } catch (e: any) {
+          if (e?.message !== NO_SPONSORED_TX) throw e; // real failure/cancel
+          toast.message("Wallet can't do gasless — sending normally", {
+            description: "You'll pay this network fee.",
+          });
+        }
+      }
       const res = await sendSbtc(sendTo, amount);
       const txid = txidOf(res);
       toast.success(`Sending ${fmt(amount)} sats`, {
@@ -542,6 +568,9 @@ function SatoApp() {
             onResolveRecipient={onResolveRecipient}
             onSend={onSend}
             balance={balance}
+            gasless={gasless}
+            setGasless={setGasless}
+            sponsorReady={sponsor.poolBalance > 0n}
             busy={busy}
           />
         )}
@@ -909,6 +938,9 @@ function SendView(props: {
   onResolveRecipient: () => void;
   onSend: () => void;
   balance: bigint;
+  gasless: boolean;
+  setGasless: (v: boolean) => void;
+  sponsorReady: boolean;
   busy: string | null;
 }) {
   const {
@@ -921,6 +953,9 @@ function SendView(props: {
     onResolveRecipient,
     onSend,
     balance,
+    gasless,
+    setGasless,
+    sponsorReady,
     busy,
   } = props;
 
@@ -992,12 +1027,39 @@ function SendView(props: {
         )}
 
         <button
+          type="button"
+          className={`gas-toggle${gasless ? " on" : ""}`}
+          onClick={() => setGasless(!gasless)}
+          aria-pressed={gasless}
+        >
+          <span className="gas-toggle-track">
+            <span className="gas-toggle-knob" />
+          </span>
+          <span className="gas-toggle-label">
+            <span className="gas-toggle-title">
+              <Zap size={13} /> Gasless
+            </span>
+            <span className="gas-toggle-sub">
+              {gasless
+                ? sponsorReady
+                  ? "The pool covers this fee"
+                  : "Pool empty — may fall back to you"
+                : "You pay the network fee"}
+            </span>
+          </span>
+        </button>
+
+        <button
           className="btn primary full"
           onClick={onSend}
           disabled={busy === "send" || !sendTo || !sendAmount || overBalance}
         >
           <Send size={16} />
-          {busy === "send" ? "Sending…" : "Send sBTC"}
+          {busy === "send"
+            ? "Sending…"
+            : gasless
+              ? "Send sBTC — no gas"
+              : "Send sBTC"}
         </button>
       </section>
 
@@ -1011,6 +1073,10 @@ function SendView(props: {
           <li>
             <span className="tip-dot" /> Usernames resolve to an address before
             the transfer.
+          </li>
+          <li>
+            <span className="tip-dot" /> With <b>Gasless</b> on, the sponsor
+            pool pays the network fee — you sign, they cover it.
           </li>
           <li>
             <span className="tip-dot" /> You approve every transfer in your
@@ -1439,6 +1505,19 @@ const shellStyles = `
 .field-hint.ok{color:#2f7d54;}
 .field-hint.miss{color:#b4341f;}
 .field-hint.warn{color:#b56a1f;}
+
+.gas-toggle{display:flex;align-items:center;gap:12px;width:100%;margin-top:18px;padding:12px 14px;background:#fafaf8;border:1px solid var(--line);border-radius:12px;cursor:pointer;text-align:left;transition:border-color .2s var(--ease),background .2s var(--ease);}
+.gas-toggle:hover{border-color:#d7d3c9;}
+.gas-toggle.on{background:#fff;border-color:var(--ink);}
+.gas-toggle-track{position:relative;flex-shrink:0;width:38px;height:22px;border-radius:999px;background:#d7d3c9;transition:background .2s var(--ease);}
+.gas-toggle.on .gas-toggle-track{background:var(--ink);}
+.gas-toggle-knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s var(--ease);}
+.gas-toggle.on .gas-toggle-knob{transform:translateX(16px);}
+.gas-toggle-label{display:flex;flex-direction:column;gap:3px;}
+.gas-toggle-title{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink);}
+.gas-toggle.on .gas-toggle-title svg{color:var(--orange);}
+.gas-toggle-title svg{color:#9a958a;}
+.gas-toggle-sub{font-size:11px;font-weight:500;color:var(--muted);}
 
 .send-panel .btn.full{margin-top:22px;}
 .earn-actions{display:flex;gap:10px;margin-top:22px;}
