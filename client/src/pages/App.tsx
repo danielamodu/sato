@@ -64,6 +64,31 @@ const fmtStx = (micro: bigint) =>
   (Number(micro) / 1_000_000).toLocaleString(undefined, {
     maximumFractionDigits: 6,
   });
+// sats (1e8 = 1 BTC) → a trimmed BTC string, e.g. 2_000_000n → "0.02".
+const fmtBtc = (sats: bigint) =>
+  (Number(sats) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 8 });
+// sats × live BTC/USD spot → "$1,340.00". Only shown when a real price is
+// loaded — we never invent one.
+const fmtUsd = (sats: bigint, btcUsd: number) =>
+  ((Number(sats) / 1e8) * btcUsd).toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+  });
+// Live BTC spot from CoinGecko (no key, CORS-open). Returns null on any failure
+// so the balance card can fall back to BTC rather than show a fake number.
+async function fetchBtcUsd(): Promise<number | null> {
+  try {
+    const r = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+    );
+    if (!r.ok) return null;
+    const d = (await r.json()) as { bitcoin?: { usd?: number } };
+    const p = d.bitcoin?.usd;
+    return typeof p === "number" && p > 0 ? p : null;
+  } catch {
+    return null;
+  }
+}
 const explorerTx = (txid: string) =>
   `https://explorer.hiro.so/txid/${txid}?chain=testnet`;
 const explorerAddr = (a: string) =>
@@ -137,6 +162,7 @@ function SatoApp() {
   const [nameState, setNameState] = useState<
     "idle" | "checking" | "available" | "taken"
   >("idle");
+  const [btcUsd, setBtcUsd] = useState<number | null>(null);
 
   // Refresh the connected user's name + balance + earn position, then activity.
   const refresh = async (addr: string) => {
@@ -178,6 +204,19 @@ function SatoApp() {
       });
     }
   }, [address]);
+
+  // Live BTC price for the balance card's USD figure. Refreshes on a slow
+  // interval; a failed fetch leaves it null and the card falls back to BTC.
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetchBtcUsd().then((p) => alive && setBtcUsd(p));
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
 
   // Live username availability — debounced read of the on-chain registry so
   // the claim form can confirm a handle before the user spends a tx on it.
@@ -554,6 +593,7 @@ function SatoApp() {
         {view === "overview" && (
           <Overview
             balance={balance}
+            btcUsd={btcUsd}
             myName={myName}
             regInput={regInput}
             setRegInput={setRegInput}
@@ -757,6 +797,7 @@ function TxTable(props: {
 // --- Overview view -------------------------------------------------------
 function Overview(props: {
   balance: bigint;
+  btcUsd: number | null;
   myName: string | null;
   regInput: string;
   setRegInput: (v: string) => void;
@@ -772,6 +813,7 @@ function Overview(props: {
 }) {
   const {
     balance,
+    btcUsd,
     myName,
     regInput,
     setRegInput,
@@ -809,11 +851,19 @@ function Overview(props: {
           icon={Coins}
           big
           value={
-            <>
-              {fmt(balance)} <small>sats</small>
-            </>
+            btcUsd != null ? (
+              <>≈ {fmtUsd(balance, btcUsd)}</>
+            ) : (
+              <>
+                {fmtBtc(balance)} <small>BTC</small>
+              </>
+            )
           }
-          sub="Custodied on testnet"
+          sub={
+            btcUsd != null
+              ? `${fmtBtc(balance)} BTC · ${fmt(balance)} sats · testnet`
+              : `${fmt(balance)} sats · testnet`
+          }
         />
         <StatTile
           label="Transactions"
