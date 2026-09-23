@@ -1,8 +1,9 @@
 // sato.ts — thin client for Sato's live testnet contracts.
 //
-// Wraps the two contracts a user touches in the demo flow:
+// Wraps the three contracts a user touches in the demo flow:
 //   - sato-names:    register-name, resolve-name, get-name
 //   - sato-transfer: send, deposit (faucet), get-balance
+//   - sato-yield:    deposit, withdraw, fund-sbtc, get-balance, get-yield
 //
 // Reads hit the testnet API directly (no wallet needed). Writes go through
 // the connected wallet via @stacks/connect's `request("stx_callContract")`.
@@ -22,6 +23,7 @@ export const NETWORK = "testnet" as const;
 export const CONTRACTS = {
   names: { address: DEPLOYER, name: "sato-names" },
   transfer: { address: DEPLOYER, name: "sato-transfer" },
+  earn: { address: DEPLOYER, name: "sato-yield" },
 } as const;
 
 const API = "https://api.testnet.hiro.so";
@@ -57,6 +59,20 @@ function optionalString(val: unknown): string | null {
   return null;
 }
 
+// cvToValue on a Clarity `uint` yields a decimal string (a bare `(ok uint)`
+// or read-only `uint` in v7). Coerce whatever shape comes back to a bigint,
+// defaulting to 0n for anything unexpected so a balance read never throws.
+function toBigInt(val: unknown): bigint {
+  try {
+    if (typeof val === "bigint") return val;
+    if (typeof val === "number") return BigInt(val);
+    if (typeof val === "string" && val.trim() !== "") return BigInt(val);
+  } catch {
+    /* malformed number — fall through to the default */
+  }
+  return 0n;
+}
+
 // Resolve a @username to the principal that owns it (null if unregistered).
 export async function resolveName(name: string): Promise<string | null> {
   const cv = await readOnly(
@@ -89,7 +105,7 @@ export async function getBalance(who: string): Promise<bigint> {
     [Cl.principal(who)],
     who
   );
-  return BigInt(cvToValue(cv));
+  return toBigInt(cvToValue(cv));
 }
 
 // A single on-chain action, normalized for the activity table.
@@ -103,6 +119,18 @@ export interface SatoTx {
 
 // Map a Sato contract-call to a friendly label.
 function labelFor(fn: string | undefined, contract: string): string {
+  if (contract === "sato-yield") {
+    switch (fn) {
+      case "deposit":
+        return "Deposited to Earn";
+      case "withdraw":
+        return "Withdrew from Earn";
+      case "fund-sbtc":
+        return "Added test sBTC";
+      case "add-yield":
+        return "Yield distributed";
+    }
+  }
   switch (fn) {
     case "send":
       return "Sent sBTC";
@@ -191,4 +219,46 @@ export function sendSbtc(recipient: string, amount: bigint) {
 // something to send. Backed by sato-transfer's mint helper.
 export function fundSelf(amount: bigint) {
   return callContract(CONTRACTS.transfer, "deposit", [Cl.uint(amount)]);
+}
+
+// --- earn (sato-yield pool) ---------------------------------------------
+
+// A user's position in the yield pool, plus pool context. All sats.
+export interface EarnStats {
+  deposited: bigint; // principal the user has earning in the pool
+  earned: bigint; // yield accrued to the user (harvested + pending)
+  available: bigint; // the user's pool sBTC ledger, ready to deposit
+  poolTotal: bigint; // total sBTC the pool holds (principal + yield)
+}
+
+// Read a user's full Earn position in one shot (four parallel reads).
+export async function getEarnStats(who: string): Promise<EarnStats> {
+  const [deposited, earned, available, poolTotal] = await Promise.all([
+    readOnly(CONTRACTS.earn, "get-balance", [Cl.principal(who)], who),
+    readOnly(CONTRACTS.earn, "get-yield", [Cl.principal(who)], who),
+    readOnly(CONTRACTS.earn, "get-sbtc-balance", [Cl.principal(who)], who),
+    readOnly(CONTRACTS.earn, "get-pool-total", [], who),
+  ]);
+  return {
+    deposited: toBigInt(cvToValue(deposited)),
+    earned: toBigInt(cvToValue(earned)),
+    available: toBigInt(cvToValue(available)),
+    poolTotal: toBigInt(cvToValue(poolTotal)),
+  };
+}
+
+// Deposit sBTC (from the pool ledger) into the yield pool to start earning.
+export function earnDeposit(amount: bigint) {
+  return callContract(CONTRACTS.earn, "deposit", [Cl.uint(amount)]);
+}
+
+// Withdraw deposited principal. Always harvests and pays out earned yield too.
+export function earnWithdraw(amount: bigint) {
+  return callContract(CONTRACTS.earn, "withdraw", [Cl.uint(amount)]);
+}
+
+// Testnet helper: credit the caller's yield-pool sBTC ledger so they have
+// sBTC available to deposit into the pool.
+export function fundEarn(amount: bigint) {
+  return callContract(CONTRACTS.earn, "fund-sbtc", [Cl.uint(amount)]);
 }
