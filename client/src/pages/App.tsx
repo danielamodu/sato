@@ -74,19 +74,29 @@ const fmtUsd = (sats: bigint, btcUsd: number) =>
     style: "currency",
     currency: "USD",
   });
-// Live BTC spot from CoinGecko (no key, CORS-open). Returns null on any failure
-// so the balance card can fall back to BTC rather than show a fake number.
-async function fetchBtcUsd(): Promise<number | null> {
+// A plain USD amount → "$12.34". For the live "as you type" echo under an
+// amount field, where the figure is already in dollars.
+const fmtUsdNum = (usd: number) =>
+  usd.toLocaleString(undefined, { style: "currency", currency: "USD" });
+// Live BTC + STX spot from CoinGecko (no key, CORS-open). Returns nulls on any
+// failure so amounts fall back to their native unit rather than a fake number.
+async function fetchPrices(): Promise<{
+  btc: number | null;
+  stx: number | null;
+}> {
   try {
     const r = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,blockstack&vs_currencies=usd"
     );
-    if (!r.ok) return null;
-    const d = (await r.json()) as { bitcoin?: { usd?: number } };
-    const p = d.bitcoin?.usd;
-    return typeof p === "number" && p > 0 ? p : null;
+    if (!r.ok) return { btc: null, stx: null };
+    const d = (await r.json()) as {
+      bitcoin?: { usd?: number };
+      blockstack?: { usd?: number };
+    };
+    const pick = (v?: number) => (typeof v === "number" && v > 0 ? v : null);
+    return { btc: pick(d.bitcoin?.usd), stx: pick(d.blockstack?.usd) };
   } catch {
-    return null;
+    return { btc: null, stx: null };
   }
 }
 const explorerTx = (txid: string) =>
@@ -163,6 +173,7 @@ function SatoApp() {
     "idle" | "checking" | "available" | "taken"
   >("idle");
   const [btcUsd, setBtcUsd] = useState<number | null>(null);
+  const [stxUsd, setStxUsd] = useState<number | null>(null);
 
   // Refresh the connected user's name + balance + earn position, then activity.
   const refresh = async (addr: string) => {
@@ -205,11 +216,17 @@ function SatoApp() {
     }
   }, [address]);
 
-  // Live BTC price for the balance card's USD figure. Refreshes on a slow
-  // interval; a failed fetch leaves it null and the card falls back to BTC.
+  // Live BTC + STX prices for the USD figures across the app. Refreshes on a
+  // slow interval; a failed fetch leaves them null so amounts fall back to
+  // their native unit rather than show a fake number.
   useEffect(() => {
     let alive = true;
-    const load = () => fetchBtcUsd().then((p) => alive && setBtcUsd(p));
+    const load = () =>
+      fetchPrices().then((p) => {
+        if (!alive) return;
+        setBtcUsd(p.btc);
+        setStxUsd(p.stx);
+      });
     load();
     const id = setInterval(load, 60_000);
     return () => {
@@ -620,6 +637,7 @@ function SatoApp() {
             onResolveRecipient={onResolveRecipient}
             onSend={onSend}
             balance={balance}
+            btcUsd={btcUsd}
             gasless={gasless}
             setGasless={setGasless}
             sponsorReady={sponsor.poolBalance > 0n}
@@ -630,6 +648,7 @@ function SatoApp() {
         {view === "earn" && (
           <EarnView
             earn={earn}
+            btcUsd={btcUsd}
             earnAmount={earnAmount}
             setEarnAmount={setEarnAmount}
             onDeposit={onEarnDeposit}
@@ -642,6 +661,7 @@ function SatoApp() {
         {view === "gas" && (
           <GasView
             sponsor={sponsor}
+            stxUsd={stxUsd}
             topUpAmount={topUpAmount}
             setTopUpAmount={setTopUpAmount}
             onTopUp={onTopUp}
@@ -985,6 +1005,7 @@ function SendView(props: {
   onResolveRecipient: () => void;
   onSend: () => void;
   balance: bigint;
+  btcUsd: number | null;
   gasless: boolean;
   setGasless: (v: boolean) => void;
   sponsorReady: boolean;
@@ -1000,6 +1021,7 @@ function SendView(props: {
     onResolveRecipient,
     onSend,
     balance,
+    btcUsd,
     gasless,
     setGasless,
     sponsorReady,
@@ -1065,12 +1087,18 @@ function SendView(props: {
           />
           <span className="field-trail">sats</span>
         </div>
+        {amountSats > 0n && btcUsd != null && (
+          <span className="field-usd">≈ {fmtUsd(amountSats, btcUsd)}</span>
+        )}
         {overBalance ? (
           <span className="field-hint miss">
             Amount exceeds your balance of {fmt(balance)} sats
           </span>
         ) : (
-          <span className="field-hint muted">Balance: {fmt(balance)} sats</span>
+          <span className="field-hint muted">
+            Balance: {fmt(balance)} sats
+            {btcUsd != null ? ` · ${fmtUsd(balance, btcUsd)}` : ""}
+          </span>
         )}
 
         <button
@@ -1145,6 +1173,7 @@ function SendView(props: {
 // --- Earn view (sato-yield pool) -----------------------------------------
 function EarnView(props: {
   earn: EarnStats;
+  btcUsd: number | null;
   earnAmount: string;
   setEarnAmount: (v: string) => void;
   onDeposit: () => void;
@@ -1154,6 +1183,7 @@ function EarnView(props: {
 }) {
   const {
     earn,
+    btcUsd,
     earnAmount,
     setEarnAmount,
     onDeposit,
@@ -1237,6 +1267,9 @@ function EarnView(props: {
             />
             <span className="field-trail">sats</span>
           </div>
+          {amountSats > 0n && btcUsd != null && (
+            <span className="field-usd">≈ {fmtUsd(amountSats, btcUsd)}</span>
+          )}
           <span className="field-hint muted">
             Available {fmt(earn.available)} · Deposited {fmt(earn.deposited)}{" "}
             sats
@@ -1299,12 +1332,13 @@ function EarnView(props: {
 // --- Gas view (sato-sponsor pool) ----------------------------------------
 function GasView(props: {
   sponsor: SponsorStats;
+  stxUsd: number | null;
   topUpAmount: string;
   setTopUpAmount: (v: string) => void;
   onTopUp: () => void;
   busy: string | null;
 }) {
-  const { sponsor, topUpAmount, setTopUpAmount, onTopUp, busy } = props;
+  const { sponsor, stxUsd, topUpAmount, setTopUpAmount, onTopUp, busy } = props;
 
   return (
     <>
@@ -1368,6 +1402,11 @@ function GasView(props: {
             />
             <span className="field-trail">STX</span>
           </div>
+          {Number(topUpAmount) > 0 && stxUsd != null && (
+            <span className="field-usd">
+              ≈ {fmtUsdNum(Number(topUpAmount) * stxUsd)}
+            </span>
+          )}
           <span className="field-hint muted">
             Pool holds {fmtStx(sponsor.poolBalance)} STX · cap{" "}
             {fmtStx(sponsor.cap)} STX per user each window
@@ -1541,13 +1580,17 @@ const shellStyles = `
 .claimed-note{color:var(--text-muted);font-size:13.5px;}
 
 .inline-form{display:flex;gap:10px;}
-.text-field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:var(--paper);flex:1;transition:border-color .14s,box-shadow .14s;}
+.text-field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:var(--white);flex:1;transition:border-color .14s,box-shadow .14s;}
 .text-field:focus-within{border-color:var(--ink);box-shadow:0 0 0 3px #0d111714;}
 .text-field.block{width:100%;margin-bottom:4px;}
 .field-at{color:var(--text-muted);font-weight:700;}
 .field-lead{color:var(--muted);flex-shrink:0;}
 .field-trail{color:var(--text-muted);font-size:13px;font-weight:600;}
 .field-input{flex:1;border:0;background:transparent;padding:13px 2px;font-size:15px;color:var(--ink);outline:none;font-family:var(--sans);min-width:0;}
+.field-input::-webkit-outer-spin-button,
+.field-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.field-input[type=number]{-moz-appearance:textfield;appearance:textfield;}
+.field-usd{display:block;font-size:14px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin:8px 0 2px;}
 .field-label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin:16px 0 7px;}
 .field-label:first-child{margin-top:0;}
 .field-hint{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;margin-top:2px;}
