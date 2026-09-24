@@ -25,6 +25,11 @@ path = "contracts/sato-yield.clar"
 clarity_version = 3
 epoch = "3.4"
 
+[contracts.sato-yield-v2]
+path = "contracts/sato-yield-v2.clar"
+clarity_version = 3
+epoch = "3.4"
+
 [contracts.sip-010-transfer]
 path = "contracts/sip-010-transfer.clar"
 clarity_version = 3

@@ -78,4 +78,9 @@ plan:
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/sato-yield.clar
       clarity-version: 3
+    - transaction-type: emulated-contract-publish
+      contract-name: sato-yield-v2
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/sato-yield-v2.clar
+      clarity-version: 3
     epoch: '3.4'
