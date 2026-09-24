@@ -133,6 +133,33 @@ async function fetchPrices(): Promise<{
     return { btc: null, stx: null };
   }
 }
+
+// One point on the BTC/USD price curve: { time in ms, price in USD }.
+export type PricePoint = { t: number; usd: number };
+
+// Real BTC/USD price history from CoinGecko (no key, CORS-open — same source
+// as the spot price). Powers the dashboard balance chart: the value of a
+// holding is its size × the real market price over time. Returns null on any
+// failure so the chart is simply hidden rather than drawn from invented data.
+async function fetchBtcHistory(days = 30): Promise<PricePoint[] | null> {
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}`
+    );
+    if (!r.ok) return null;
+    const d = (await r.json()) as { prices?: [number, number][] };
+    const prices = Array.isArray(d.prices) ? d.prices : [];
+    const points = prices
+      .filter(
+        (p) =>
+          Array.isArray(p) && typeof p[0] === "number" && typeof p[1] === "number" && p[1] > 0
+      )
+      .map(([t, usd]) => ({ t, usd }));
+    return points.length >= 2 ? points : null;
+  } catch {
+    return null;
+  }
+}
 const explorerTx = (txid: string) =>
   `https://explorer.hiro.so/txid/${txid}?chain=testnet`;
 const explorerAddr = (a: string) =>
@@ -208,6 +235,7 @@ function SatoApp() {
   >("idle");
   const [btcUsd, setBtcUsd] = useState<number | null>(null);
   const [stxUsd, setStxUsd] = useState<number | null>(null);
+  const [priceHistory, setPriceHistory] = useState<PricePoint[] | null>(null);
 
   // Refresh the connected user's name + balance + earn position, then activity.
   const refresh = async (addr: string) => {
@@ -263,6 +291,23 @@ function SatoApp() {
       });
     load();
     const id = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  // Real 30-day BTC/USD history for the balance chart. Refreshes slowly (the
+  // curve barely moves) and leaves the series null on failure so the chart is
+  // hidden rather than faked.
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      fetchBtcHistory(30).then((h) => {
+        if (alive) setPriceHistory(h);
+      });
+    load();
+    const id = setInterval(load, 300_000);
     return () => {
       alive = false;
       clearInterval(id);
@@ -678,6 +723,7 @@ function SatoApp() {
           <Overview
             balance={balance}
             btcUsd={btcUsd}
+            history={priceHistory}
             myName={myName}
             regInput={regInput}
             setRegInput={setRegInput}
@@ -890,10 +936,195 @@ function TxTable(props: {
   );
 }
 
+// Downsample to at most `max` points, always keeping the first and last so
+// the endpoints (and the % change read from them) stay exact.
+function downsample<T>(arr: T[], max: number): T[] {
+  if (arr.length <= max) return arr;
+  const step = (arr.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => arr[Math.round(i * step)]);
+}
+
+// Catmull-Rom → cubic-bezier smoothing, for a soft but faithful line.
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return "";
+  const k = 0.16;
+  const d = [`M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) * k;
+    const c1y = p1.y + (p2.y - p0.y) * k;
+    const c2x = p2.x - (p3.x - p1.x) * k;
+    const c2y = p2.y - (p3.y - p1.y) * k;
+    d.push(
+      `C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+    );
+  }
+  return d.join(" ");
+}
+
+// The dashboard headline: the balance's current value plus a live 30-day
+// chart of that value at real market price. With no price history we show the
+// figure and a hint — never a drawn-from-nothing line.
+function BalanceHero({
+  balance,
+  btcUsd,
+  history,
+}: {
+  balance: bigint;
+  btcUsd: number | null;
+  history: PricePoint[] | null;
+}) {
+  const btc = Number(balance) / 1e8;
+  const series =
+    history && balance > 0n
+      ? downsample(history, 80).map((p) => ({ t: p.t, v: btc * p.usd }))
+      : [];
+  const showChart = series.length >= 2;
+  const pct =
+    showChart && series[0].v > 0
+      ? ((series[series.length - 1].v - series[0].v) / series[0].v) * 100
+      : null;
+  const up = (pct ?? 0) >= 0;
+
+  return (
+    <section className="balance-hero">
+      <div className="bh-top">
+        <div>
+          <span className="bh-eyebrow">Total balance</span>
+          <div className="bh-value">
+            {btcUsd != null ? (
+              <span className="bh-num">{fmtUsd(balance, btcUsd)}</span>
+            ) : (
+              <span className="bh-num">
+                {fmtBtc(balance)} <small>BTC</small>
+              </span>
+            )}
+          </div>
+          <span className="bh-sub">
+            {btcUsd != null
+              ? `${fmtBtc(balance)} BTC · ${fmt(balance)} sats · testnet`
+              : `${fmt(balance)} sats · testnet`}
+          </span>
+        </div>
+        {pct != null && (
+          <span className={up ? "bh-trend up" : "bh-trend down"}>
+            {up ? "+" : "−"}
+            {Math.abs(pct).toFixed(1)}% · 30d
+          </span>
+        )}
+      </div>
+      {showChart ? (
+        <BalanceSparkline series={series} />
+      ) : (
+        <div className="bh-empty">
+          {balance > 0n
+            ? "Balance value over time will appear once market data loads."
+            : "Add test sBTC to see your balance value over time."}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Interactive line chart of the balance's market value. Hover (or drag on
+// touch) to read the value on any day. The width is measured so the drawing
+// and the pointer math share one coordinate space.
+function BalanceSparkline({ series }: { series: { t: number; v: number }[] }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+  const [hi, setHi] = useState<number | null>(null);
+  const H = 108;
+  const padY = 14;
+
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    setW(el.clientWidth);
+    const ro = new ResizeObserver((es) => setW(es[0].contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const n = series.length;
+  const vals = series.map((p) => p.v);
+  const min = Math.min(...vals);
+  const span = Math.max(...vals) - min || 1;
+  const xAt = (i: number) => (n <= 1 ? 0 : (i / (n - 1)) * w);
+  const yAt = (v: number) => padY + (1 - (v - min) / span) * (H - 2 * padY);
+  const line = smoothPath(series.map((p, i) => ({ x: xAt(i), y: yAt(p.v) })));
+  const area = line ? `${line} L ${w.toFixed(2)} ${H} L 0 ${H} Z` : "";
+
+  const onMove = (e: React.PointerEvent) => {
+    const r = wrap.current!.getBoundingClientRect();
+    const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+    setHi(n <= 1 ? 0 : Math.round((x / r.width) * (n - 1)));
+  };
+
+  const hp = hi != null ? series[hi] : null;
+  const hx = hp ? xAt(hi!) : 0;
+  const tipLeft = Math.max(44, Math.min(w - 44, hx));
+
+  // __SPARKLINE2__
+  return (
+    <div
+      className="bchart"
+      ref={wrap}
+      onPointerMove={onMove}
+      onPointerLeave={() => setHi(null)}
+      role="img"
+      aria-label="Balance value over the last 30 days"
+    >
+      {w > 0 && (
+        <svg
+          className="bchart-svg"
+          width={w}
+          height={H}
+          viewBox={`0 0 ${w} ${H}`}
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <linearGradient id="bchart-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--ink)" stopOpacity="0.12" />
+              <stop offset="100%" stopColor="var(--ink)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path className="bchart-area" d={area} fill="url(#bchart-fill)" />
+          <path
+            className="bchart-line"
+            pathLength={1}
+            d={line}
+            fill="none"
+            stroke="var(--ink)"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {hp && (
+            <g>
+              <line x1={hx} y1={padY - 6} x2={hx} y2={H} stroke="var(--line)" strokeWidth={1} />
+              <circle cx={hx} cy={yAt(hp.v)} r={4.5} fill="var(--orange)" stroke="var(--white)" strokeWidth={2} />
+            </g>
+          )}
+        </svg>
+      )}
+      {hp && (
+        <div className="bchart-tip" style={{ left: `${tipLeft}px` }}>
+          <strong>{fmtUsdNum(hp.v)}</strong>
+          <small>{new Date(hp.t).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Overview view -------------------------------------------------------
 function Overview(props: {
   balance: bigint;
   btcUsd: number | null;
+  history: PricePoint[] | null;
   myName: string | null;
   regInput: string;
   setRegInput: (v: string) => void;
@@ -911,6 +1142,7 @@ function Overview(props: {
   const {
     balance,
     btcUsd,
+    history,
     myName,
     regInput,
     setRegInput,
@@ -943,26 +1175,9 @@ function Overview(props: {
         </button>
       </header>
 
-      <div className="stat-row">
-        <StatTile
-          label="Available balance"
-          icon={Coins}
-          big
-          value={
-            btcUsd != null ? (
-              <>≈ {fmtUsd(balance, btcUsd)}</>
-            ) : (
-              <>
-                {fmtBtc(balance)} <small>BTC</small>
-              </>
-            )
-          }
-          sub={
-            btcUsd != null
-              ? `${fmtBtc(balance)} BTC · ${fmt(balance)} sats · testnet`
-              : `${fmt(balance)} sats · testnet`
-          }
-        />
+      <BalanceHero balance={balance} btcUsd={btcUsd} history={history} />
+
+      <div className="stat-row two">
         <StatTile
           label="Transactions"
           icon={Hash}
@@ -1939,6 +2154,29 @@ const shellStyles = `
 .balance-unit{font-size:17px;color:var(--text-muted);font-weight:600;}
 .panel-actions{display:flex;gap:10px;margin-top:24px;}
 
+/* Balance hero + live value chart (Overview) */
+.balance-hero{background:var(--white);border:1px solid var(--line);border-radius:18px;padding:24px 26px 10px;margin-bottom:16px;overflow:hidden;}
+.bh-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
+.bh-eyebrow{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.bh-value{display:flex;align-items:baseline;gap:8px;margin:9px 0 3px;}
+.bh-num{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1;}
+.bh-num small{font-size:16px;color:var(--text-muted);font-weight:600;}
+.bh-sub{font-size:13px;color:var(--text-muted);}
+.bh-trend{display:inline-flex;align-items:center;font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:999px;white-space:nowrap;flex-shrink:0;}
+.bh-trend.up{background:#eef6f1;color:#2f7d54;}
+.bh-trend.down{background:#fbeae7;color:#b4341f;}
+.bh-empty{margin:16px 0 14px;padding:16px;border:1px dashed var(--line);border-radius:12px;font-size:13px;color:var(--text-muted);text-align:center;}
+.bchart{position:relative;width:100%;height:108px;margin-top:12px;touch-action:pan-y;cursor:crosshair;}
+.bchart-svg{display:block;width:100%;height:108px;}
+.bchart-area,.bchart-line{pointer-events:none;}
+.bchart-tip{position:absolute;top:-4px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:9px;padding:6px 10px;pointer-events:none;display:flex;flex-direction:column;gap:1px;box-shadow:0 8px 20px #16202829;white-space:nowrap;z-index:2;}
+.bchart-tip strong{font-size:13px;font-weight:700;letter-spacing:-.01em;}
+.bchart-tip small{font-size:10px;color:#b8c2ce;text-transform:uppercase;letter-spacing:.05em;}
+@media(prefers-reduced-motion:no-preference){
+  .bchart-line{stroke-dasharray:1;stroke-dashoffset:1;animation:bdraw 1.05s var(--ease) .05s forwards;}
+}
+@keyframes bdraw{to{stroke-dashoffset:0;}}
+
 .claimed-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
 .claimed-badge{display:inline-flex;align-items:center;gap:6px;background:#f0f7f3;color:#2f7d54;border:1px solid #cfe8db;padding:8px 14px;border-radius:999px;font-weight:700;font-size:15px;}
 .claimed-note{color:var(--text-muted);font-size:13.5px;}
@@ -1989,6 +2227,7 @@ const shellStyles = `
 
 /* Stat tiles */
 .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;}
+.stat-row.two{grid-template-columns:repeat(2,1fr);}
 .stat-tile{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:9px;transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;}
 .stat-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .stat-label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
@@ -2126,7 +2365,7 @@ const shellStyles = `
   .ov-grid,.send-grid{grid-template-columns:1fr;}
 }
 @media(max-width:640px){
-  .stat-row{grid-template-columns:1fr;}
+  .stat-row,.stat-row.two{grid-template-columns:1fr;}
 }
 @media(max-width:800px){
   .sato-shell{grid-template-columns:1fr;}
@@ -2153,6 +2392,7 @@ const shellStyles = `
   .auth-points{gap:9px;}
   .balance-num{font-size:36px;}
   .stat-tile.big .stat-value{font-size:26px;}
+  .bh-num{font-size:32px;}
 }
 @media(prefers-reduced-motion:reduce){
   .view>*,.tx-list .tx-row,.auth-body>*,.brandside-card,.spin{animation:none !important;}
