@@ -1,0 +1,45 @@
+{
+  "name": "sato-mobile",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "spike": "tsx spike/sponsored-send.ts"
+  },
+  "dependencies": {
+    "expo": "~53.0.0",
+    "expo-constants": "~17.1.0",
+    "expo-linking": "~7.1.0",
+    "expo-router": "~5.0.0",
+    "expo-secure-store": "~14.2.0",
+    "expo-status-bar": "~2.2.0",
+    "@expo/vector-icons": "^14.1.0",
+    "expo-clipboard": "~7.1.0",
+    "expo-local-authentication": "~16.0.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-native": "0.79.2",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-screens": "~4.10.0",
+    "react-native-get-random-values": "~1.11.0",
+    "react-native-svg": "15.11.2",
+    "react-native-qrcode-svg": "^6.3.0",
+    "@stacks/transactions": "^7.6.0",
+    "@stacks/wallet-sdk": "^7.0.0",
+    "buffer": "^6.0.3",
+    "process": "^0.11.10",
+    "text-encoding": "^0.7.0",
+    "readable-stream": "^4.5.2",
+    "crypto-browserify": "^3.12.1",
+    "@peculiar/webcrypto": "^1.5.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@types/react": "~19.0.0",
+    "typescript": "~5.6.3",
+    "tsx": "^4.19.1"
+  }
+}
