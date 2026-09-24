@@ -1913,7 +1913,7 @@ const shellStyles = `
 .nav-item.active::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--orange);margin-left:auto;flex-shrink:0;}
 .sidebar-account{border-top:1px solid var(--line);padding-top:14px;margin-top:14px;}
 .account-row{display:flex;align-items:center;gap:10px;padding:4px 6px;}
-.account-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#4f74ba;display:grid;place-items:center;font-size:12px;font-weight:700;}
+.account-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#446aa8;display:grid;place-items:center;font-size:12px;font-weight:700;}
 .account-meta{display:flex;flex-direction:column;min-width:0;}
 .account-meta strong{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .account-meta small{font-size:11.5px;color:var(--muted);font-family:var(--mono);}
