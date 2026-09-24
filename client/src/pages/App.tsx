@@ -37,6 +37,7 @@ import {
   Download,
 } from "lucide-react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
+import { usePageMeta } from "@/hooks/usePageMeta";
 import { StacksProvider, useStacks } from "@/contexts/StacksContext";
 import {
   registerName,
@@ -2161,6 +2162,7 @@ const shellStyles = `
 
 // Provider wrapper so the route can mount <App /> directly.
 export default function App() {
+  usePageMeta("Your wallet · Sato", "Send, earn, and cash out sBTC from your Sato wallet.");
   return (
     <StacksProvider>
       <SatoApp />

@@ -2,10 +2,12 @@ import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, ShieldCheck, X } from "lucide-react";
 import { Link } from "wouter";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 type AudiencePageProps = { eyebrow: string; title: ReactNode; intro: string; bullets: string[]; cta: string };
 
 export default function AudiencePage({ eyebrow, title, intro, bullets, cta }: AudiencePageProps) {
+  usePageMeta(`Sato ${eyebrow.toLowerCase()} — Bitcoin payments made human.`, intro);
   const [modalOpen, setModalOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);

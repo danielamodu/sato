@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronDown, ChevronRight, CircleDollarSign, Cookie, Mail, Menu, ShieldCheck, X } from "lucide-react";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 const logoSrc = "/assets/sato-logo.png";
 
@@ -25,6 +26,11 @@ export default function Home() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [consentVisible, setConsentVisible] = useState(false);
   const [activeSection, setActiveSection] = useState("product");
+
+  usePageMeta(
+    "Sato — Send Bitcoin like a text.",
+    "Sato is a Bitcoin payment app for real people. Send to anyone, earn on your balance, cash out whenever.",
+  );
 
   useEffect(() => {
     setConsentVisible(window.localStorage.getItem("sato-cookie-consent") !== "set");

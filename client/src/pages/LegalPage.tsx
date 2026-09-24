@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowUpRight, Check, ShieldCheck } from "lucide-react";
 import { Link } from "wouter";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 type LegalPageProps = {
   eyebrow: string;
@@ -10,6 +11,7 @@ type LegalPageProps = {
 };
 
 export default function LegalPage({ eyebrow, title, intro, updated, sections }: LegalPageProps) {
+  usePageMeta(`${eyebrow} · Sato`, intro);
   return (
     <div className="legal-shell">
       <header className="site-header legal-header">
