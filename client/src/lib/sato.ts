@@ -207,73 +207,79 @@ export async function getRecentTransactions(
   }
 }
 
-// A signed change to the connected wallet's sBTC balance, at a point in time.
-// Positive = credited (a faucet deposit or an incoming send), negative = debited
-// (an outgoing send). The headline balance is sato-transfer's ledger, so only
-// that contract's calls move it — Earn uses a separate ledger and is excluded.
-export interface BalanceDelta {
+// One balance-affecting event on the connected wallet's sato-transfer ledger,
+// reconstructed from the contract's on-chain `print` events. Positive delta =
+// credited (a faucet top-up or an incoming payment), negative = debited (an
+// outgoing send). Earn uses a separate ledger and never appears here.
+export interface BalanceEvent {
   time: number; // ms epoch of the confirming block
   delta: bigint; // sats added (+) or removed (−)
+  kind: "deposit" | "received" | "sent";
+  peer: string | null; // the other party, for sent/received
+  txId: string;
 }
 
-// Reconstruct the real balance timeline: the connected wallet's own
-// sato-transfer calls, each turned into a signed sats delta, straight from the
-// chain. Anchored to the live balance by the caller, this yields a true
-// balance-over-time chart — no invented curve. `complete` is false when the
-// address has more history than we fetched (older steps may be missing).
-//
-// The address tx feed returns calls the wallet *made*, so `send` here is always
-// outgoing (−). Incoming sends (someone paying this wallet) aren't in the feed;
-// walking back from the exact current balance still lands today's point right,
-// and any resulting undershoot is clamped at zero rather than faked.
+// Reconstruct the wallet's real balance history — every credit AND debit, in
+// both directions — straight from the chain. sato-transfer emits `print`
+// events (not SIP-010 transfers), so an address's tx feed misses payments it
+// only *received*; instead we read the contract's own event log, which records
+// every `sbtc-mint`/`sbtc-transfer`, then join block times in one batch call.
+// Anchored to the live balance by the caller, this is a true, honest timeline.
 export async function getBalanceHistory(
   who: string,
   limit = 50
-): Promise<{ deltas: BalanceDelta[]; complete: boolean }> {
+): Promise<{ events: BalanceEvent[]; complete: boolean }> {
   try {
+    const contract = `${CONTRACTS.transfer.address}.${CONTRACTS.transfer.name}`;
     const res = await fetch(
-      `${API}/extended/v1/address/${who}/transactions?limit=${limit}`
+      `${API}/extended/v1/contract/${contract}/events?limit=${limit}`
     );
-    if (!res.ok) return { deltas: [], complete: false };
+    if (!res.ok) return { events: [], complete: false };
     const data = await res.json();
     const rows: any[] = data?.results ?? [];
-    const total: number = typeof data?.total === "number" ? data.total : rows.length;
-    const uintArg = (a: any): bigint => {
-      try {
-        return BigInt(String(a?.repr ?? "").replace(/^u/, ""));
-      } catch {
-        return 0n;
-      }
-    };
-    const principalArg = (a: any): string =>
-      String(a?.repr ?? "").replace(/^'/, "");
-    const deltas: BalanceDelta[] = [];
-    for (const tx of rows) {
-      if (tx?.tx_type !== "contract_call") continue;
-      if (!String(tx?.tx_status ?? "").startsWith("success")) continue;
-      const cid: string = tx.contract_call?.contract_id ?? "";
-      if (!cid.endsWith(".sato-transfer")) continue; // headline ledger only
-      const fn: string = tx.contract_call?.function_name ?? "";
-      const args: any[] = tx.contract_call?.function_args ?? [];
+    // Pull a field out of a Clarity print tuple repr, e.g.
+    // (tuple (amount u1000000) (event "sbtc-transfer") (recipient 'ST..) (sender 'ST..))
+    const field = (repr: string, re: RegExp): string =>
+      (repr.match(re) ?? [])[1] ?? "";
+    type Raw = { delta: bigint; kind: BalanceEvent["kind"]; peer: string | null; txId: string };
+    const raw: Raw[] = [];
+    for (const ev of rows) {
+      if (ev?.event_type !== "smart_contract_log") continue;
+      const repr: string = ev.contract_log?.value?.repr ?? "";
+      const kind = field(repr, /\(event "([^"]+)"\)/);
+      let amount = 0n;
+      try { amount = BigInt(field(repr, /\(amount u(\d+)\)/) || "0"); } catch { /* skip */ }
+      const recipient = field(repr, /\(recipient '([0-9A-Z]+)/);
+      const sender = field(repr, /\(sender '([0-9A-Z]+)/);
+      const txId: string = ev.tx_id;
+      if (amount <= 0n) continue;
+      if (kind === "sbtc-mint" && recipient === who)
+        raw.push({ delta: amount, kind: "deposit", peer: null, txId });
+      else if (kind === "sbtc-transfer" && recipient === who && sender !== who)
+        raw.push({ delta: amount, kind: "received", peer: sender || null, txId });
+      else if (kind === "sbtc-transfer" && sender === who)
+        raw.push({ delta: -amount, kind: "sent", peer: recipient || null, txId });
+    }
+    // Join confirming block times in one batched call, dropping anything not
+    // yet successfully mined, then order oldest→newest for the staircase.
+    const ids = [...new Set(raw.map((r) => r.txId))];
+    const tRes = await fetch(
+      `${API}/extended/v1/tx/multiple?${ids.map((id) => `tx_id=${id}`).join("&")}`
+    );
+    const tData: any = tRes.ok ? await tRes.json() : {};
+    const events: BalanceEvent[] = [];
+    for (const r of raw) {
+      const tx = tData?.[r.txId]?.result;
+      if (!tx || !String(tx.tx_status ?? "").startsWith("success")) continue;
       const iso = tx.burn_block_time_iso ?? tx.parent_burn_block_time_iso;
       const time = iso ? new Date(iso).getTime() : null;
-      if (!time) continue; // skip unconfirmed — no timestamp to place it
-      if (fn === "deposit") {
-        deltas.push({ time, delta: uintArg(args[0]) });
-      } else if (fn === "mint") {
-        if (principalArg(args[0]) === who)
-          deltas.push({ time, delta: uintArg(args[1]) });
-      } else if (fn === "send") {
-        const amount = uintArg(args[1]);
-        if (tx.sender_address === who) deltas.push({ time, delta: -amount });
-        else if (principalArg(args[0]) === who)
-          deltas.push({ time, delta: amount });
-      }
+      if (!time) continue;
+      events.push({ time, delta: r.delta, kind: r.kind, peer: r.peer, txId: r.txId });
     }
-    deltas.sort((a, b) => a.time - b.time);
-    return { deltas, complete: rows.length >= total };
+    events.sort((a, b) => a.time - b.time);
+    return { events, complete: rows.length < limit };
   } catch {
-    return { deltas: [], complete: false };
+    return { events: [], complete: false };
   }
 }
 

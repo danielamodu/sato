@@ -58,7 +58,7 @@ import {
   sponsorTopUp,
   isNameAvailable,
   type SatoTx,
-  type BalanceDelta,
+  type BalanceEvent,
   type EarnStats,
   type SponsorStats,
 } from "@/lib/sato";
@@ -211,7 +211,7 @@ function SatoApp() {
   >("idle");
   const [btcUsd, setBtcUsd] = useState<number | null>(null);
   const [stxUsd, setStxUsd] = useState<number | null>(null);
-  const [deltas, setDeltas] = useState<BalanceDelta[]>([]);
+  const [events, setEvents] = useState<BalanceEvent[]>([]);
 
   // Refresh the connected user's name + balance + earn position, then activity.
   const refresh = async (addr: string) => {
@@ -227,7 +227,7 @@ function SatoApp() {
       setBalance(b);
       setEarn(e);
       setSponsor(s);
-      setDeltas(hist.deltas);
+      setEvents(hist.events);
     } catch (e) {
       console.error("refresh failed", e);
     }
@@ -245,7 +245,7 @@ function SatoApp() {
       setMyName(null);
       setBalance(0n);
       setTxs([]);
-      setDeltas([]);
+      setEvents([]);
       setEarn({ deposited: 0n, earned: 0n, available: 0n, poolTotal: 0n });
       setSponsor({
         poolBalance: 0n,
@@ -685,7 +685,7 @@ function SatoApp() {
           <Overview
             balance={balance}
             btcUsd={btcUsd}
-            deltas={deltas}
+            events={events}
             myName={myName}
             regInput={regInput}
             setRegInput={setRegInput}
@@ -898,58 +898,55 @@ function TxTable(props: {
   );
 }
 
-// Build the real balance-over-time series: start from the live on-chain
-// balance and walk the wallet's signed deltas back across a 30-day window,
-// producing a step line that only moves when the wallet actually moved. Each
-// tx becomes two points (level before, level after) so it renders as a step.
-const CHART_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-
-function buildBalanceSeries(
-  balance: bigint,
-  deltas: BalanceDelta[]
-): { t: number; sats: number }[] {
-  const now = Date.now();
-  const start = now - CHART_WINDOW_MS;
-  const within = deltas
-    .filter((d) => d.time > start && d.time <= now)
-    .sort((a, b) => a.time - b.time);
-  // Balance at the window's start = today's balance minus every delta since.
-  const sumWithin = within.reduce((s, d) => s + d.delta, 0n);
-  let run = balance - sumWithin;
-  if (run < 0n) run = 0n; // clamp: incomplete history / unseen incoming credit
-  const pts: { t: number; sats: number }[] = [{ t: start, sats: Number(run) }];
-  for (const d of within) {
-    pts.push({ t: d.time, sats: Number(run) }); // level just before the tx
-    run += d.delta;
-    if (run < 0n) run = 0n;
-    pts.push({ t: d.time, sats: Number(run) }); // level just after the tx
-  }
-  pts.push({ t: now, sats: Number(run) });
-  return pts;
+// Turn the wallet's balance-affecting events into an evenly-spaced staircase:
+// one node per change, so every send and receive is a distinct, equal-width
+// step you can land on — never a flat month with a single cliff at the edge.
+// Node 0 is the balance before the first shown event; the last node is today's
+// live balance. Anchoring to that live balance keeps the tail exact even if the
+// event log was truncated.
+interface ChartNode {
+  sats: number;
+  event: BalanceEvent | null; // the change that produced this level (null = baseline)
 }
 
-// The dashboard headline: the balance's current value plus a real 30-day chart
-// of the balance itself over time, reconstructed from on-chain activity. With
-// nothing to plot we show the figure and a hint — never a drawn-from-nothing line.
+function buildBalanceSeries(balance: bigint, events: BalanceEvent[]): ChartNode[] {
+  if (events.length === 0) return [];
+  const sorted = [...events].sort((a, b) => a.time - b.time);
+  const total = sorted.reduce((s, e) => s + e.delta, 0n);
+  let run = balance - total; // balance just before the earliest shown event
+  if (run < 0n) run = 0n; // clamp: truncated log / unseen credit
+  const nodes: ChartNode[] = [{ sats: Number(run), event: null }];
+  for (const e of sorted) {
+    run += e.delta;
+    if (run < 0n) run = 0n;
+    nodes.push({ sats: Number(run), event: e });
+  }
+  return nodes;
+}
+
+// The dashboard headline: the balance's live value plus a real, interactive
+// chart of the balance itself — one step per on-chain change, sends and
+// receives alike. With no activity yet we show the figure and a hint, never a
+// drawn-from-nothing line.
 function BalanceHero({
   balance,
   btcUsd,
-  deltas,
+  events,
 }: {
   balance: bigint;
   btcUsd: number | null;
-  deltas: BalanceDelta[];
+  events: BalanceEvent[];
 }) {
-  const series = buildBalanceSeries(balance, deltas);
-  const maxSats = Math.max(...series.map((p) => p.sats));
-  const showChart = series.length >= 2 && maxSats > 0;
-  const startSats = series[0].sats;
-  const endSats = series[series.length - 1].sats;
-  // Real change in the held balance across the window. From a zero start any
-  // percentage is meaningless, so we flag it as newly funded instead.
+  const nodes = buildBalanceSeries(balance, events);
+  const maxSats = nodes.length ? Math.max(...nodes.map((n) => n.sats)) : 0;
+  const showChart = nodes.length >= 2 && maxSats > 0;
+  const baseSats = nodes.length ? nodes[0].sats : 0;
+  const endSats = nodes.length ? nodes[nodes.length - 1].sats : 0;
+  // Real change across the shown history. From a zero baseline any percentage
+  // is meaningless, so we flag it as newly funded instead.
   const pct =
-    showChart && startSats > 0 ? ((endSats - startSats) / startSats) * 100 : null;
-  const fromZero = showChart && startSats === 0 && endSats > 0;
+    showChart && baseSats > 0 ? ((endSats - baseSats) / baseSats) * 100 : null;
+  const fromZero = showChart && baseSats === 0 && endSats > 0;
   const up = (pct ?? 0) >= 0;
 
   return (
@@ -973,18 +970,22 @@ function BalanceHero({
           </span>
         </div>
         {fromZero ? (
-          <span className="bh-trend up">New · 30d</span>
+          <span className="bh-trend up">New</span>
         ) : (
           pct != null && (
             <span className={up ? "bh-trend up" : "bh-trend down"}>
               {up ? "+" : "−"}
-              {Math.abs(pct).toFixed(1)}% · 30d
+              {Math.abs(pct).toFixed(1)}%
             </span>
           )
         )}
       </div>
       {showChart ? (
-        <BalanceSparkline series={series} btcUsd={btcUsd} />
+        <BalanceSparkline
+          nodes={nodes}
+          btcUsd={btcUsd}
+          changeCount={events.length}
+        />
       ) : (
         <div className="bh-empty">
           {balance > 0n
@@ -996,22 +997,25 @@ function BalanceHero({
   );
 }
 
-// Interactive step chart of the sBTC balance over the last 30 days. The line
-// steps only where the wallet actually transacted; between events it is
-// genuinely flat. Hover (or drag on touch) to read the exact balance and its
-// value on any day. Width is measured so drawing and pointer math share a frame.
+// Interactive balance staircase: one equal-width step per on-chain change, so
+// every send and receive is a distinct point you can land on — no time axis, so
+// no flat dead zones. Hover or drag to read what happened, how much, with whom,
+// and the resulting balance. Width is measured so drawing and pointer math share
+// one coordinate space.
 function BalanceSparkline({
-  series,
+  nodes,
   btcUsd,
+  changeCount,
 }: {
-  series: { t: number; sats: number }[];
+  nodes: ChartNode[];
   btcUsd: number | null;
+  changeCount: number;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
-  const [hi, setHi] = useState<number | null>(null);
-  const H = 108;
-  const padY = 14;
+  const [hi, setHi] = useState<number | null>(null); // active event index (1..N-1)
+  const H = 116;
+  const padY = 16;
 
   useEffect(() => {
     const el = wrap.current;
@@ -1021,56 +1025,49 @@ function BalanceSparkline({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-
-  const t0 = series[0].t;
-  const t1 = series[series.length - 1].t;
-  const tSpan = t1 - t0 || 1;
-  const vals = series.map((p) => p.sats);
+  const N = nodes.length; // levels; N-1 = number of changes
+  const seg = w / N; // equal plateau width per level
+  const vals = nodes.map((n) => n.sats);
   const min = Math.min(...vals);
   const maxV = Math.max(...vals);
   const flat = maxV === min;
   const span = maxV - min || 1;
-  const xAt = (t: number) => ((t - t0) / tSpan) * w;
   const yAt = (s: number) =>
     flat ? H / 2 : padY + (1 - (s - min) / span) * (H - 2 * padY);
-  // Straight segments through the before/after-jump points draw a crisp staircase.
-  const line = series
-    .map(
-      (p, i) =>
-        `${i === 0 ? "M" : "L"} ${xAt(p.t).toFixed(2)} ${yAt(p.sats).toFixed(2)}`
-    )
-    .join(" ");
-  const area = line ? `${line} L ${w.toFixed(2)} ${H} L 0 ${H} Z` : "";
+  const xOf = (k: number) => k * seg; // x of the k-th riser (event k)
 
-  // Balance at an arbitrary time = the last step at or before it.
-  const satsAt = (t: number) => {
-    let s = series[0].sats;
-    for (const p of series) {
-      if (p.t <= t) s = p.sats;
-      else break;
-    }
-    return s;
-  };
+  // Baseline plateau, a riser at each change, then the current plateau out to
+  // the right edge — every level keeps an equal plateau so no step is crushed.
+  let line = `M 0 ${yAt(nodes[0].sats).toFixed(2)}`;
+  for (let k = 1; k < N; k++) {
+    line += ` L ${xOf(k).toFixed(2)} ${yAt(nodes[k - 1].sats).toFixed(2)}`;
+    line += ` L ${xOf(k).toFixed(2)} ${yAt(nodes[k].sats).toFixed(2)}`;
+  }
+  line += ` L ${w.toFixed(2)} ${yAt(nodes[N - 1].sats).toFixed(2)}`;
+  const area = w > 0 ? `${line} L ${w.toFixed(2)} ${H} L 0 ${H} Z` : "";
 
   const onMove = (e: React.PointerEvent) => {
     const r = wrap.current!.getBoundingClientRect();
     const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
-    setHi(t0 + (x / r.width) * tSpan);
+    const k = Math.round(x / (r.width / N)); // snap to the nearest riser
+    setHi(Math.max(1, Math.min(N - 1, k)));
   };
 
-  const hoverT = hi;
-  const hoverSats = hoverT != null ? satsAt(hoverT) : null;
-  const hx = hoverT != null ? xAt(hoverT) : 0;
-  const tipLeft = Math.max(52, Math.min(w - 52, hx));
-
+  const active = hi != null ? nodes[hi] : null;
+  const ev = active?.event ?? null;
+  const ax = hi != null ? xOf(hi) : 0;
+  const tipLeft = Math.max(64, Math.min(w - 64, ax));
   return (
     <div
       className="bchart"
       ref={wrap}
       onPointerMove={onMove}
+      onPointerDown={onMove}
       onPointerLeave={() => setHi(null)}
       role="img"
-      aria-label="sBTC balance over the last 30 days"
+      aria-label={`sBTC balance across ${changeCount} on-chain ${
+        changeCount === 1 ? "change" : "changes"
+      }`}
     >
       {w > 0 && (
         <svg
@@ -1097,30 +1094,79 @@ function BalanceSparkline({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {hoverSats != null && (
-            <g>
-              <line x1={hx} y1={padY - 6} x2={hx} y2={H} stroke="var(--line)" strokeWidth={1} />
-              <circle cx={hx} cy={yAt(hoverSats)} r={4.5} fill="var(--orange)" stroke="var(--white)" strokeWidth={2} />
-            </g>
+          {nodes.slice(1).map((nd, i) => {
+            const k = i + 1;
+            const on = hi === k;
+            return (
+              <circle
+                key={nd.event?.txId ?? k}
+                cx={xOf(k)}
+                cy={yAt(nd.sats)}
+                r={on ? 5 : 3}
+                fill={on ? "var(--orange)" : "var(--white)"}
+                stroke="var(--ink)"
+                strokeWidth={on ? 2 : 1.5}
+              />
+            );
+          })}
+          {hi != null && (
+            <line
+              x1={ax}
+              y1={padY - 8}
+              x2={ax}
+              y2={H}
+              stroke="var(--line)"
+              strokeWidth={1}
+            />
           )}
         </svg>
       )}
-      {hoverT != null && hoverSats != null && (
+      {ev && (
         <div className="bchart-tip" style={{ left: `${tipLeft}px` }}>
+          <span className={`bct-kind ${ev.delta >= 0n ? "in" : "out"}`}>
+            {ev.kind === "sent" ? (
+              <ArrowUpRight size={12} />
+            ) : ev.kind === "received" ? (
+              <ArrowDownLeft size={12} />
+            ) : (
+              <Plus size={12} />
+            )}
+            {ev.kind === "sent"
+              ? "Sent"
+              : ev.kind === "received"
+                ? "Received"
+                : "Added test sBTC"}
+          </span>
           <strong>
-            {hoverSats.toLocaleString()} <span>sats</span>
+            {ev.delta >= 0n ? "+" : "−"}
+            {fmtBtc(ev.delta < 0n ? -ev.delta : ev.delta)} <span>BTC</span>
           </strong>
-          <small>
-            {btcUsd != null
-              ? `${fmtUsd(BigInt(Math.round(hoverSats)), btcUsd)} · `
-              : ""}
-            {new Date(hoverT).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-            })}
+          {btcUsd != null && (
+            <small className="bct-usd">
+              {ev.delta >= 0n ? "+" : "−"}
+              {fmtUsd(ev.delta < 0n ? -ev.delta : ev.delta, btcUsd)}
+            </small>
+          )}
+          {ev.peer && (
+            <small className="bct-peer">
+              {ev.kind === "sent" ? "to" : "from"} {short(ev.peer)}
+            </small>
+          )}
+          <small className="bct-meta">
+            Balance {fmtBtc(BigInt(active!.sats))} BTC
           </small>
         </div>
       )}
+      <div className="bchart-foot">
+        <span>
+          {changeCount} {changeCount === 1 ? "change" : "changes"}
+        </span>
+        {ev ? (
+          <span>{new Date(ev.time).toLocaleString()}</span>
+        ) : (
+          <span>hover to explore</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -1129,7 +1175,7 @@ function BalanceSparkline({
 function Overview(props: {
   balance: bigint;
   btcUsd: number | null;
-  deltas: BalanceDelta[];
+  events: BalanceEvent[];
   myName: string | null;
   regInput: string;
   setRegInput: (v: string) => void;
@@ -1147,7 +1193,7 @@ function Overview(props: {
   const {
     balance,
     btcUsd,
-    deltas,
+    events,
     myName,
     regInput,
     setRegInput,
@@ -1180,7 +1226,7 @@ function Overview(props: {
         </button>
       </header>
 
-      <BalanceHero balance={balance} btcUsd={btcUsd} deltas={deltas} />
+      <BalanceHero balance={balance} btcUsd={btcUsd} events={events} />
 
       <div className="stat-row two">
         <StatTile
@@ -2171,13 +2217,21 @@ const shellStyles = `
 .bh-trend.up{background:#eef6f1;color:#2f7d54;}
 .bh-trend.down{background:#fbeae7;color:#b4341f;}
 .bh-empty{margin:16px 0 14px;padding:16px;border:1px dashed var(--line);border-radius:12px;font-size:13px;color:var(--text-muted);text-align:center;}
-.bchart{position:relative;width:100%;height:108px;margin-top:12px;touch-action:pan-y;cursor:crosshair;}
-.bchart-svg{display:block;width:100%;height:108px;}
+.bchart{position:relative;width:100%;margin-top:14px;touch-action:pan-y;cursor:crosshair;}
+.bchart-svg{display:block;width:100%;height:116px;}
 .bchart-area,.bchart-line{pointer-events:none;}
-.bchart-tip{position:absolute;top:-4px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:9px;padding:6px 10px;pointer-events:none;display:flex;flex-direction:column;gap:1px;box-shadow:0 8px 20px #16202829;white-space:nowrap;z-index:2;}
-.bchart-tip strong{font-size:13px;font-weight:700;letter-spacing:-.01em;}
-.bchart-tip strong span{font-size:9px;font-weight:600;color:#b8c2ce;text-transform:uppercase;letter-spacing:.05em;margin-left:1px;}
-.bchart-tip small{font-size:10px;color:#b8c2ce;text-transform:uppercase;letter-spacing:.05em;}
+.bchart-svg circle{transition:r .12s var(--ease);}
+.bchart-tip{position:absolute;top:-6px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:11px;padding:8px 11px;pointer-events:none;display:flex;flex-direction:column;gap:3px;box-shadow:0 10px 26px #16202833;white-space:nowrap;z-index:3;min-width:118px;}
+.bct-kind{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#c3ccd6;}
+.bct-kind.in{color:#7fd6a3;}
+.bct-kind.out{color:#f3a08c;}
+.bchart-tip strong{font-size:15px;font-weight:800;letter-spacing:-.01em;line-height:1.1;}
+.bchart-tip strong span{font-size:9px;font-weight:600;color:#aeb8c4;text-transform:uppercase;letter-spacing:.05em;margin-left:2px;}
+.bct-usd{font-size:11px;font-weight:600;color:#e7ecf1;}
+.bct-peer{font-size:10.5px;color:#aeb8c4;}
+.bct-meta{font-size:9.5px;color:#8f9aa7;text-transform:uppercase;letter-spacing:.05em;margin-top:1px;}
+.bchart-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;}
+.bchart-foot span:first-child{font-weight:600;color:var(--ink);}
 @media(prefers-reduced-motion:no-preference){
   .bchart-line{stroke-dasharray:1;stroke-dashoffset:1;animation:bdraw 1.05s var(--ease) .05s forwards;}
 }
