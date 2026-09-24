@@ -34,7 +34,6 @@ import {
   Fuel,
   Zap,
   QrCode,
-  Share2,
   Download,
 } from "lucide-react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
@@ -1275,25 +1274,6 @@ function ReceiveView(props: {
     toast.success(`${label} copied`);
   };
 
-  const share = async () => {
-    // Native share sheet on mobile; otherwise fall back to copying the link.
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share({
-          title: "Pay me on Sato",
-          text: myName
-            ? `Send me sBTC on Sato — @${myName}`
-            : "Send me sBTC on Sato",
-          url: payLink,
-        });
-      } catch {
-        /* user dismissed the sheet — not an error */
-      }
-      return;
-    }
-    copy(payLink, "Payment link");
-  };
-
   const qrWrapRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
 
@@ -1504,17 +1484,12 @@ function ReceiveView(props: {
             >
               <Download size={16} /> {saving ? "Creating…" : "Download card"}
             </button>
-            <div className="receive-sub-actions">
-              <button className="btn soft" onClick={share}>
-                <Share2 size={15} /> Share link
-              </button>
-              <button
-                className="btn soft"
-                onClick={() => copy(payLink, "Payment link")}
-              >
-                <Copy size={15} /> Copy link
-              </button>
-            </div>
+            <button
+              className="btn soft full"
+              onClick={() => copy(payLink, "Payment link")}
+            >
+              <Copy size={15} /> Copy link
+            </button>
           </div>
         </section>
         <aside className="panel send-aside">
@@ -1975,6 +1950,7 @@ const shellStyles = `
 .field-lead{color:var(--muted);flex-shrink:0;}
 .field-trail{color:var(--text-muted);font-size:13px;font-weight:600;}
 .field-input{flex:1;border:0;background:transparent;padding:13px 2px;font-size:15px;color:var(--ink);outline:none;font-family:var(--sans);min-width:0;}
+.field-input:focus,.field-input:focus-visible{outline:none;}
 .field-input::-webkit-outer-spin-button,
 .field-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 .field-input[type=number]{-moz-appearance:textfield;appearance:textfield;}
@@ -2091,8 +2067,6 @@ const shellStyles = `
 .receive-note b{color:var(--ink);font-weight:700;}
 .link-btn{border:0;background:transparent;color:var(--orange);font-weight:700;cursor:pointer;font-family:var(--sans);font-size:inherit;padding:0;text-decoration:underline;text-underline-offset:2px;}
 .receive-actions{display:flex;flex-direction:column;gap:10px;margin-top:22px;width:100%;}
-.receive-sub-actions{display:flex;gap:10px;}
-.receive-sub-actions .btn{flex:1;}
 .receive-addr{margin-bottom:20px;}
 .receive-addr-val{display:block;word-break:break-all;font-size:12.5px;line-height:1.5;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;}
 .receive-addr-row{display:flex;gap:8px;}

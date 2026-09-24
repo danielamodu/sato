@@ -58,18 +58,23 @@ html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}button,a{touch-action:
 @media(max-width:560px){.site-header{padding-left:1rem;padding-right:1rem}.floating-dock{max-width:calc(100vw - 24px)}.hero{gap:2rem}.product-stage{min-height:350px}.app-content{padding:14px}.balance-card{padding:14px}.balance-amount{font-size:1.7rem}.send-card{padding:13px}.merchant-toast{transform:scale(.78);transform-origin:right bottom}.trust-grid{grid-template-columns:1fr}.waitlist-modal{padding:28px 22px}.waitlist-modal h2{font-size:3.5rem}.consent-copy p{font-size:.59rem}.consent-actions button{min-height:40px}}
 @media(prefers-reduced-motion:reduce){.waitlist-modal-backdrop,.waitlist-modal{animation:none}}
 
-/* Compact cookie notice placed beside—not behind—the floating dock */
-.consent-banner{left:auto;right:clamp(1rem,3vw,2.25rem);bottom:clamp(1rem,3vw,2.25rem);max-width:600px;padding:12px 14px;gap:12px;border-radius:13px}.consent-icon{width:31px;height:31px;flex-basis:31px;border-radius:8px}.consent-copy strong{font-size:.68rem;margin-bottom:3px}.consent-copy p{font-size:.56rem}.consent-links{margin-top:5px}.consent-actions{gap:6px}.consent-actions button{padding:8px 10px;font-size:.55rem}.floating-dock~.consent-banner{right:clamp(1rem,3vw,2.25rem)}
-@media(max-width:800px){.consent-banner{left:auto;right:14px;bottom:82px;width:min(420px,calc(100vw - 28px));max-width:none;padding:11px 12px}.consent-copy{flex-basis:calc(100% - 45px)}.consent-actions{width:100%;gap:6px}.consent-actions button{padding:8px 9px}}
-@media(max-width:560px){.consent-banner{right:12px;bottom:80px;width:min(340px,calc(100vw - 24px));padding:10px}.consent-copy p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.consent-icon{width:28px;height:28px;flex-basis:28px}.consent-actions button{font-size:.52rem}}
-
-/* Keep the desktop notice clear of the fixed dock */
-.consent-banner{right:24px;bottom:96px;max-width:520px}
-@media(max-width:800px){.consent-banner{right:14px;bottom:82px;max-width:none}}
+/* (cookie consent placement is consolidated at the end of this file) */
 
 /* Keep the full mobile hero readable and prevent the preview from spilling into the CTA area */
 @media(max-width:800px){.hero{min-height:auto;overflow:visible;padding-top:28px;padding-bottom:128px;gap:28px}.hero-copy{min-height:0}.product-stage{min-height:380px;margin-top:0;overflow:visible}.app-window{transform:none;animation:none}.stage-caption{display:none}.merchant-toast{right:0;bottom:18px}}
 @media(max-width:560px){.hero{padding-top:22px;padding-bottom:128px;gap:24px}.product-stage{min-height:350px}.app-window{width:100%;max-width:100%;border-radius:16px}.merchant-toast{right:0;bottom:16px;transform:scale(.78);transform-origin:right bottom}}
 
 /* Final mobile hero fit: keep headline, CTA, trust row, and preview in one contained composition */
-@media(max-width:560px){.hero{display:flex;flex-direction:column;min-height:calc(100svh - 72px);height:auto;gap:16px;padding-top:18px;padding-bottom:92px;overflow:hidden}.hero-copy{width:100%;max-width:none}.hero h1{font-size:clamp(2.85rem,12.5vw,3.5rem);line-height:.96;letter-spacing:-.085em;margin-bottom:14px}.hero-lede{font-size:.76rem;line-height:1.5;margin-bottom:14px;max-width:360px}.hero-actions{flex-direction:row;align-items:center;gap:12px}.hero-actions .primary-button{padding:12px 13px 12px 15px;font-size:.65rem;gap:15px}.hero-actions .text-link{font-size:.64rem}.trust-row{flex-direction:row;flex-wrap:wrap;gap:8px 14px;margin-top:14px;font-size:.52rem}.product-stage{width:100%;height:232px;min-height:232px;flex:0 0 232px;overflow:hidden;margin-top:0}.product-stage .app-window{width:calc(100% / .66);max-width:none;transform:scale(.66);transform-origin:top left}.product-stage .merchant-toast{display:none}.product-stage .stage-caption{display:none}.stage-glow{width:360px;height:250px}.consent-banner{max-height:128px;overflow:hidden}}
+@media(max-width:560px){.hero{display:flex;flex-direction:column;min-height:calc(100svh - 72px);height:auto;gap:16px;padding-top:18px;padding-bottom:92px;overflow:hidden}.hero-copy{width:100%;max-width:none}.hero h1{font-size:clamp(2.85rem,12.5vw,3.5rem);line-height:.96;letter-spacing:-.085em;margin-bottom:14px}.hero-lede{font-size:.76rem;line-height:1.5;margin-bottom:14px;max-width:360px}.hero-actions{flex-direction:row;align-items:center;gap:12px}.hero-actions .primary-button{padding:12px 13px 12px 15px;font-size:.65rem;gap:15px}.hero-actions .text-link{font-size:.64rem}.trust-row{flex-direction:row;flex-wrap:wrap;gap:8px 14px;margin-top:14px;font-size:.52rem}.product-stage{width:100%;height:232px;min-height:232px;flex:0 0 232px;overflow:hidden;margin-top:0}.product-stage .app-window{width:calc(100% / .66);max-width:none;transform:scale(.66);transform-origin:top left}.product-stage .merchant-toast{display:none}.product-stage .stage-caption{display:none}.stage-glow{width:360px;height:250px}}
+
+/* Cookie consent — consolidated placement + responsive layout (supersedes the .consent-banner fragments above) */
+.consent-banner{position:fixed;z-index:40;left:auto;right:clamp(1rem,3vw,24px);bottom:96px;top:auto;width:min(390px,calc(100vw - 24px));max-width:390px;max-height:none;overflow:visible;display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;padding:15px 16px;border-radius:14px}
+.consent-icon{width:34px;height:34px;flex:0 0 34px}
+.consent-copy{flex:1;min-width:0}
+.consent-copy strong{font-size:.72rem;margin-bottom:4px}
+.consent-copy p{font-size:.6rem;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.consent-links{margin-top:7px}
+.consent-actions{width:100%;gap:8px}
+.consent-actions button{flex:1;padding:10px 12px;font-size:.58rem;min-height:40px}
+@media(max-width:800px){.consent-banner{left:12px;right:12px;bottom:84px;width:auto;max-width:none}}
+@media(max-width:560px){.consent-banner{bottom:82px;padding:13px;gap:11px}.consent-copy strong{font-size:.7rem}.consent-copy p{-webkit-line-clamp:2}.consent-links{display:none}}
