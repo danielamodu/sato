@@ -49,6 +49,7 @@ import {
   NO_SPONSORED_TX,
   fundSelf,
   getRecentTransactions,
+  getBalanceHistory,
   getEarnStats,
   earnDeposit,
   earnWithdraw,
@@ -57,6 +58,7 @@ import {
   sponsorTopUp,
   isNameAvailable,
   type SatoTx,
+  type BalanceDelta,
   type EarnStats,
   type SponsorStats,
 } from "@/lib/sato";
@@ -134,32 +136,6 @@ async function fetchPrices(): Promise<{
   }
 }
 
-// One point on the BTC/USD price curve: { time in ms, price in USD }.
-export type PricePoint = { t: number; usd: number };
-
-// Real BTC/USD price history from CoinGecko (no key, CORS-open — same source
-// as the spot price). Powers the dashboard balance chart: the value of a
-// holding is its size × the real market price over time. Returns null on any
-// failure so the chart is simply hidden rather than drawn from invented data.
-async function fetchBtcHistory(days = 30): Promise<PricePoint[] | null> {
-  try {
-    const r = await fetch(
-      `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}`
-    );
-    if (!r.ok) return null;
-    const d = (await r.json()) as { prices?: [number, number][] };
-    const prices = Array.isArray(d.prices) ? d.prices : [];
-    const points = prices
-      .filter(
-        (p) =>
-          Array.isArray(p) && typeof p[0] === "number" && typeof p[1] === "number" && p[1] > 0
-      )
-      .map(([t, usd]) => ({ t, usd }));
-    return points.length >= 2 ? points : null;
-  } catch {
-    return null;
-  }
-}
 const explorerTx = (txid: string) =>
   `https://explorer.hiro.so/txid/${txid}?chain=testnet`;
 const explorerAddr = (a: string) =>
@@ -235,21 +211,23 @@ function SatoApp() {
   >("idle");
   const [btcUsd, setBtcUsd] = useState<number | null>(null);
   const [stxUsd, setStxUsd] = useState<number | null>(null);
-  const [priceHistory, setPriceHistory] = useState<PricePoint[] | null>(null);
+  const [deltas, setDeltas] = useState<BalanceDelta[]>([]);
 
   // Refresh the connected user's name + balance + earn position, then activity.
   const refresh = async (addr: string) => {
     try {
-      const [n, b, e, s] = await Promise.all([
+      const [n, b, e, s, hist] = await Promise.all([
         getName(addr),
         getBalance(addr),
         getEarnStats(addr),
         getSponsorStats(addr),
+        getBalanceHistory(addr),
       ]);
       setMyName(n);
       setBalance(b);
       setEarn(e);
       setSponsor(s);
+      setDeltas(hist.deltas);
     } catch (e) {
       console.error("refresh failed", e);
     }
@@ -267,6 +245,7 @@ function SatoApp() {
       setMyName(null);
       setBalance(0n);
       setTxs([]);
+      setDeltas([]);
       setEarn({ deposited: 0n, earned: 0n, available: 0n, poolTotal: 0n });
       setSponsor({
         poolBalance: 0n,
@@ -291,23 +270,6 @@ function SatoApp() {
       });
     load();
     const id = setInterval(load, 60_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  // Real 30-day BTC/USD history for the balance chart. Refreshes slowly (the
-  // curve barely moves) and leaves the series null on failure so the chart is
-  // hidden rather than faked.
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
-      fetchBtcHistory(30).then((h) => {
-        if (alive) setPriceHistory(h);
-      });
-    load();
-    const id = setInterval(load, 300_000);
     return () => {
       alive = false;
       clearInterval(id);
@@ -723,7 +685,7 @@ function SatoApp() {
           <Overview
             balance={balance}
             btcUsd={btcUsd}
-            history={priceHistory}
+            deltas={deltas}
             myName={myName}
             regInput={regInput}
             setRegInput={setRegInput}
@@ -936,57 +898,58 @@ function TxTable(props: {
   );
 }
 
-// Downsample to at most `max` points, always keeping the first and last so
-// the endpoints (and the % change read from them) stay exact.
-function downsample<T>(arr: T[], max: number): T[] {
-  if (arr.length <= max) return arr;
-  const step = (arr.length - 1) / (max - 1);
-  return Array.from({ length: max }, (_, i) => arr[Math.round(i * step)]);
-}
+// Build the real balance-over-time series: start from the live on-chain
+// balance and walk the wallet's signed deltas back across a 30-day window,
+// producing a step line that only moves when the wallet actually moved. Each
+// tx becomes two points (level before, level after) so it renders as a step.
+const CHART_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
-// Catmull-Rom → cubic-bezier smoothing, for a soft but faithful line.
-function smoothPath(pts: { x: number; y: number }[]): string {
-  if (pts.length < 2) return "";
-  const k = 0.16;
-  const d = [`M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] || p2;
-    const c1x = p1.x + (p2.x - p0.x) * k;
-    const c1y = p1.y + (p2.y - p0.y) * k;
-    const c2x = p2.x - (p3.x - p1.x) * k;
-    const c2y = p2.y - (p3.y - p1.y) * k;
-    d.push(
-      `C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
-    );
+function buildBalanceSeries(
+  balance: bigint,
+  deltas: BalanceDelta[]
+): { t: number; sats: number }[] {
+  const now = Date.now();
+  const start = now - CHART_WINDOW_MS;
+  const within = deltas
+    .filter((d) => d.time > start && d.time <= now)
+    .sort((a, b) => a.time - b.time);
+  // Balance at the window's start = today's balance minus every delta since.
+  const sumWithin = within.reduce((s, d) => s + d.delta, 0n);
+  let run = balance - sumWithin;
+  if (run < 0n) run = 0n; // clamp: incomplete history / unseen incoming credit
+  const pts: { t: number; sats: number }[] = [{ t: start, sats: Number(run) }];
+  for (const d of within) {
+    pts.push({ t: d.time, sats: Number(run) }); // level just before the tx
+    run += d.delta;
+    if (run < 0n) run = 0n;
+    pts.push({ t: d.time, sats: Number(run) }); // level just after the tx
   }
-  return d.join(" ");
+  pts.push({ t: now, sats: Number(run) });
+  return pts;
 }
 
-// The dashboard headline: the balance's current value plus a live 30-day
-// chart of that value at real market price. With no price history we show the
-// figure and a hint — never a drawn-from-nothing line.
+// The dashboard headline: the balance's current value plus a real 30-day chart
+// of the balance itself over time, reconstructed from on-chain activity. With
+// nothing to plot we show the figure and a hint — never a drawn-from-nothing line.
 function BalanceHero({
   balance,
   btcUsd,
-  history,
+  deltas,
 }: {
   balance: bigint;
   btcUsd: number | null;
-  history: PricePoint[] | null;
+  deltas: BalanceDelta[];
 }) {
-  const btc = Number(balance) / 1e8;
-  const series =
-    history && balance > 0n
-      ? downsample(history, 80).map((p) => ({ t: p.t, v: btc * p.usd }))
-      : [];
-  const showChart = series.length >= 2;
+  const series = buildBalanceSeries(balance, deltas);
+  const maxSats = Math.max(...series.map((p) => p.sats));
+  const showChart = series.length >= 2 && maxSats > 0;
+  const startSats = series[0].sats;
+  const endSats = series[series.length - 1].sats;
+  // Real change in the held balance across the window. From a zero start any
+  // percentage is meaningless, so we flag it as newly funded instead.
   const pct =
-    showChart && series[0].v > 0
-      ? ((series[series.length - 1].v - series[0].v) / series[0].v) * 100
-      : null;
+    showChart && startSats > 0 ? ((endSats - startSats) / startSats) * 100 : null;
+  const fromZero = showChart && startSats === 0 && endSats > 0;
   const up = (pct ?? 0) >= 0;
 
   return (
@@ -1009,30 +972,41 @@ function BalanceHero({
               : `${fmt(balance)} sats · testnet`}
           </span>
         </div>
-        {pct != null && (
-          <span className={up ? "bh-trend up" : "bh-trend down"}>
-            {up ? "+" : "−"}
-            {Math.abs(pct).toFixed(1)}% · 30d
-          </span>
+        {fromZero ? (
+          <span className="bh-trend up">New · 30d</span>
+        ) : (
+          pct != null && (
+            <span className={up ? "bh-trend up" : "bh-trend down"}>
+              {up ? "+" : "−"}
+              {Math.abs(pct).toFixed(1)}% · 30d
+            </span>
+          )
         )}
       </div>
       {showChart ? (
-        <BalanceSparkline series={series} />
+        <BalanceSparkline series={series} btcUsd={btcUsd} />
       ) : (
         <div className="bh-empty">
           {balance > 0n
-            ? "Balance value over time will appear once market data loads."
-            : "Add test sBTC to see your balance value over time."}
+            ? "Your balance history will appear as you add, send, and receive."
+            : "Add test sBTC to start your balance history."}
         </div>
       )}
     </section>
   );
 }
 
-// Interactive line chart of the balance's market value. Hover (or drag on
-// touch) to read the value on any day. The width is measured so the drawing
-// and the pointer math share one coordinate space.
-function BalanceSparkline({ series }: { series: { t: number; v: number }[] }) {
+// Interactive step chart of the sBTC balance over the last 30 days. The line
+// steps only where the wallet actually transacted; between events it is
+// genuinely flat. Hover (or drag on touch) to read the exact balance and its
+// value on any day. Width is measured so drawing and pointer math share a frame.
+function BalanceSparkline({
+  series,
+  btcUsd,
+}: {
+  series: { t: number; sats: number }[];
+  btcUsd: number | null;
+}) {
   const wrap = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
   const [hi, setHi] = useState<number | null>(null);
@@ -1048,26 +1022,47 @@ function BalanceSparkline({ series }: { series: { t: number; v: number }[] }) {
     return () => ro.disconnect();
   }, []);
 
-  const n = series.length;
-  const vals = series.map((p) => p.v);
+  const t0 = series[0].t;
+  const t1 = series[series.length - 1].t;
+  const tSpan = t1 - t0 || 1;
+  const vals = series.map((p) => p.sats);
   const min = Math.min(...vals);
-  const span = Math.max(...vals) - min || 1;
-  const xAt = (i: number) => (n <= 1 ? 0 : (i / (n - 1)) * w);
-  const yAt = (v: number) => padY + (1 - (v - min) / span) * (H - 2 * padY);
-  const line = smoothPath(series.map((p, i) => ({ x: xAt(i), y: yAt(p.v) })));
+  const maxV = Math.max(...vals);
+  const flat = maxV === min;
+  const span = maxV - min || 1;
+  const xAt = (t: number) => ((t - t0) / tSpan) * w;
+  const yAt = (s: number) =>
+    flat ? H / 2 : padY + (1 - (s - min) / span) * (H - 2 * padY);
+  // Straight segments through the before/after-jump points draw a crisp staircase.
+  const line = series
+    .map(
+      (p, i) =>
+        `${i === 0 ? "M" : "L"} ${xAt(p.t).toFixed(2)} ${yAt(p.sats).toFixed(2)}`
+    )
+    .join(" ");
   const area = line ? `${line} L ${w.toFixed(2)} ${H} L 0 ${H} Z` : "";
+
+  // Balance at an arbitrary time = the last step at or before it.
+  const satsAt = (t: number) => {
+    let s = series[0].sats;
+    for (const p of series) {
+      if (p.t <= t) s = p.sats;
+      else break;
+    }
+    return s;
+  };
 
   const onMove = (e: React.PointerEvent) => {
     const r = wrap.current!.getBoundingClientRect();
     const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
-    setHi(n <= 1 ? 0 : Math.round((x / r.width) * (n - 1)));
+    setHi(t0 + (x / r.width) * tSpan);
   };
 
-  const hp = hi != null ? series[hi] : null;
-  const hx = hp ? xAt(hi!) : 0;
-  const tipLeft = Math.max(44, Math.min(w - 44, hx));
+  const hoverT = hi;
+  const hoverSats = hoverT != null ? satsAt(hoverT) : null;
+  const hx = hoverT != null ? xAt(hoverT) : 0;
+  const tipLeft = Math.max(52, Math.min(w - 52, hx));
 
-  // __SPARKLINE2__
   return (
     <div
       className="bchart"
@@ -1075,7 +1070,7 @@ function BalanceSparkline({ series }: { series: { t: number; v: number }[] }) {
       onPointerMove={onMove}
       onPointerLeave={() => setHi(null)}
       role="img"
-      aria-label="Balance value over the last 30 days"
+      aria-label="sBTC balance over the last 30 days"
     >
       {w > 0 && (
         <svg
@@ -1102,18 +1097,28 @@ function BalanceSparkline({ series }: { series: { t: number; v: number }[] }) {
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {hp && (
+          {hoverSats != null && (
             <g>
               <line x1={hx} y1={padY - 6} x2={hx} y2={H} stroke="var(--line)" strokeWidth={1} />
-              <circle cx={hx} cy={yAt(hp.v)} r={4.5} fill="var(--orange)" stroke="var(--white)" strokeWidth={2} />
+              <circle cx={hx} cy={yAt(hoverSats)} r={4.5} fill="var(--orange)" stroke="var(--white)" strokeWidth={2} />
             </g>
           )}
         </svg>
       )}
-      {hp && (
+      {hoverT != null && hoverSats != null && (
         <div className="bchart-tip" style={{ left: `${tipLeft}px` }}>
-          <strong>{fmtUsdNum(hp.v)}</strong>
-          <small>{new Date(hp.t).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
+          <strong>
+            {hoverSats.toLocaleString()} <span>sats</span>
+          </strong>
+          <small>
+            {btcUsd != null
+              ? `${fmtUsd(BigInt(Math.round(hoverSats)), btcUsd)} · `
+              : ""}
+            {new Date(hoverT).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            })}
+          </small>
         </div>
       )}
     </div>
@@ -1124,7 +1129,7 @@ function BalanceSparkline({ series }: { series: { t: number; v: number }[] }) {
 function Overview(props: {
   balance: bigint;
   btcUsd: number | null;
-  history: PricePoint[] | null;
+  deltas: BalanceDelta[];
   myName: string | null;
   regInput: string;
   setRegInput: (v: string) => void;
@@ -1142,7 +1147,7 @@ function Overview(props: {
   const {
     balance,
     btcUsd,
-    history,
+    deltas,
     myName,
     regInput,
     setRegInput,
@@ -1175,7 +1180,7 @@ function Overview(props: {
         </button>
       </header>
 
-      <BalanceHero balance={balance} btcUsd={btcUsd} history={history} />
+      <BalanceHero balance={balance} btcUsd={btcUsd} deltas={deltas} />
 
       <div className="stat-row two">
         <StatTile
@@ -2171,6 +2176,7 @@ const shellStyles = `
 .bchart-area,.bchart-line{pointer-events:none;}
 .bchart-tip{position:absolute;top:-4px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:9px;padding:6px 10px;pointer-events:none;display:flex;flex-direction:column;gap:1px;box-shadow:0 8px 20px #16202829;white-space:nowrap;z-index:2;}
 .bchart-tip strong{font-size:13px;font-weight:700;letter-spacing:-.01em;}
+.bchart-tip strong span{font-size:9px;font-weight:600;color:#b8c2ce;text-transform:uppercase;letter-spacing:.05em;margin-left:1px;}
 .bchart-tip small{font-size:10px;color:#b8c2ce;text-transform:uppercase;letter-spacing:.05em;}
 @media(prefers-reduced-motion:no-preference){
   .bchart-line{stroke-dasharray:1;stroke-dashoffset:1;animation:bdraw 1.05s var(--ease) .05s forwards;}

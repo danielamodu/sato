@@ -207,6 +207,76 @@ export async function getRecentTransactions(
   }
 }
 
+// A signed change to the connected wallet's sBTC balance, at a point in time.
+// Positive = credited (a faucet deposit or an incoming send), negative = debited
+// (an outgoing send). The headline balance is sato-transfer's ledger, so only
+// that contract's calls move it — Earn uses a separate ledger and is excluded.
+export interface BalanceDelta {
+  time: number; // ms epoch of the confirming block
+  delta: bigint; // sats added (+) or removed (−)
+}
+
+// Reconstruct the real balance timeline: the connected wallet's own
+// sato-transfer calls, each turned into a signed sats delta, straight from the
+// chain. Anchored to the live balance by the caller, this yields a true
+// balance-over-time chart — no invented curve. `complete` is false when the
+// address has more history than we fetched (older steps may be missing).
+//
+// The address tx feed returns calls the wallet *made*, so `send` here is always
+// outgoing (−). Incoming sends (someone paying this wallet) aren't in the feed;
+// walking back from the exact current balance still lands today's point right,
+// and any resulting undershoot is clamped at zero rather than faked.
+export async function getBalanceHistory(
+  who: string,
+  limit = 50
+): Promise<{ deltas: BalanceDelta[]; complete: boolean }> {
+  try {
+    const res = await fetch(
+      `${API}/extended/v1/address/${who}/transactions?limit=${limit}`
+    );
+    if (!res.ok) return { deltas: [], complete: false };
+    const data = await res.json();
+    const rows: any[] = data?.results ?? [];
+    const total: number = typeof data?.total === "number" ? data.total : rows.length;
+    const uintArg = (a: any): bigint => {
+      try {
+        return BigInt(String(a?.repr ?? "").replace(/^u/, ""));
+      } catch {
+        return 0n;
+      }
+    };
+    const principalArg = (a: any): string =>
+      String(a?.repr ?? "").replace(/^'/, "");
+    const deltas: BalanceDelta[] = [];
+    for (const tx of rows) {
+      if (tx?.tx_type !== "contract_call") continue;
+      if (!String(tx?.tx_status ?? "").startsWith("success")) continue;
+      const cid: string = tx.contract_call?.contract_id ?? "";
+      if (!cid.endsWith(".sato-transfer")) continue; // headline ledger only
+      const fn: string = tx.contract_call?.function_name ?? "";
+      const args: any[] = tx.contract_call?.function_args ?? [];
+      const iso = tx.burn_block_time_iso ?? tx.parent_burn_block_time_iso;
+      const time = iso ? new Date(iso).getTime() : null;
+      if (!time) continue; // skip unconfirmed — no timestamp to place it
+      if (fn === "deposit") {
+        deltas.push({ time, delta: uintArg(args[0]) });
+      } else if (fn === "mint") {
+        if (principalArg(args[0]) === who)
+          deltas.push({ time, delta: uintArg(args[1]) });
+      } else if (fn === "send") {
+        const amount = uintArg(args[1]);
+        if (tx.sender_address === who) deltas.push({ time, delta: -amount });
+        else if (principalArg(args[0]) === who)
+          deltas.push({ time, delta: amount });
+      }
+    }
+    deltas.sort((a, b) => a.time - b.time);
+    return { deltas, complete: rows.length >= total };
+  } catch {
+    return { deltas: [], complete: false };
+  }
+}
+
 // --- writes (wallet) -----------------------------------------------------
 
 async function callContract(
