@@ -203,7 +203,23 @@ function vitePluginStorageProxy(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector(), vitePluginStorageProxy()];
+// Manus preview/telemetry tooling (previewer runtime, debug collector, storage
+// proxy) exists only for the in-editor dev preview. Keep it out of production
+// builds — in prod it inlines ~300KB+ of previewer script into index.html and
+// captures client-side console/network/interaction data users never opted into.
+const isDev = process.env.NODE_ENV !== "production";
+const plugins = [
+  react(),
+  tailwindcss(),
+  jsxLocPlugin(),
+  ...(isDev
+    ? [
+        vitePluginManusRuntime(),
+        vitePluginManusDebugCollector(),
+        vitePluginStorageProxy(),
+      ]
+    : []),
+];
 
 export default defineConfig({
   plugins,
