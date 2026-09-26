@@ -39,12 +39,15 @@ const DEPLOYER = "ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV";
 const NETWORK = "testnet" as const;
 
 // Only these (contract, function) pairs are ever eligible for sponsorship.
-// Read-only/owner-only functions are deliberately absent. `deposit` on
-// sato-transfer is the testnet faucet (mints valueless test sBTC to the
-// caller); it's sponsorable so an embedded-wallet user holding zero STX can
-// onboard and transact — bounded, like everything here, by the fixed fee +
-// per-user rate limit below. Earn points at sato-yield-v2 (the live pool).
+// Read-only/owner-only functions are deliberately absent. `deposit` is the
+// testnet faucet (mints valueless test sBTC to the caller); it's sponsorable so
+// an embedded-wallet user holding zero STX can onboard and transact — bounded,
+// like everything here, by the fixed fee + per-user rate limit below. The app's
+// ledger is sato-yield-v3 (holding sBTC there auto-earns): send/deposit are the
+// wallet, lock/claim-lock the optional boost tier. sato-transfer + sato-yield-v2
+// stay allow-listed for the still-live older flows.
 const ALLOWED: Record<string, string[]> = {
+  "sato-yield-v3": ["send", "deposit", "lock", "claim-lock"],
   "sato-transfer": ["send", "deposit"],
   "sato-names": ["register-name", "transfer-name"],
   "sato-yield-v2": ["deposit", "withdraw", "fund-reserve"],
