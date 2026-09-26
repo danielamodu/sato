@@ -1,9 +1,11 @@
 // sato.ts — thin client for Sato's live testnet contracts.
 //
-// Wraps the four contracts a user touches in the demo flow:
+// Wraps the contracts a user touches in the demo flow:
 //   - sato-names:    register-name, resolve-name, get-name, is-name-available
-//   - sato-transfer: send, deposit (faucet), get-balance
-//   - sato-yield-v2: deposit, withdraw, fund-reserve, get-balance, get-yield
+//   - sato-yield-v3: the yield-bearing ledger — get-balance, send, deposit
+//                    (faucet). A held balance auto-earns the base rate with no
+//                    deposit step; lock/claim-lock opt sats into the higher
+//                    boost rate for a fixed term.
 //   - sato-sponsor:  top-up, get-sponsor-balance, get-remaining-allowance
 //
 // Reads hit the testnet API directly (no wallet needed). Writes go through
@@ -23,8 +25,9 @@ export const NETWORK = "testnet" as const;
 
 export const CONTRACTS = {
   names: { address: DEPLOYER, name: "sato-names" },
-  transfer: { address: DEPLOYER, name: "sato-transfer" },
-  earn: { address: DEPLOYER, name: "sato-yield-v2" },
+  // The yield-bearing ledger. It IS the wallet: balances live here, and simply
+  // holding sBTC earns the base rate. Supersedes sato-transfer + sato-yield-v2.
+  ledger: { address: DEPLOYER, name: "sato-yield-v3" },
   sponsor: { address: DEPLOYER, name: "sato-sponsor" },
 } as const;
 
@@ -111,10 +114,11 @@ export async function isNameAvailable(name: string): Promise<boolean> {
   return cvToValue(cv) === true; // read-only returns a bare bool
 }
 
-// Get a principal's sBTC balance (in sats) from the transfer ledger.
+// Get a principal's live sBTC balance (in sats) from the yield-bearing ledger.
+// This is settled balance + pending base yield, so it ticks up every block.
 export async function getBalance(who: string): Promise<bigint> {
   const cv = await readOnly(
-    CONTRACTS.transfer,
+    CONTRACTS.ledger,
     "get-balance",
     [Cl.principal(who)],
     who
@@ -133,6 +137,15 @@ export interface SatoTx {
 
 // Map a Sato contract-call to a friendly label.
 function labelFor(fn: string | undefined, contract: string): string {
+  if (contract === "sato-yield-v3") {
+    switch (fn) {
+      case "lock":
+        return "Locked for boost";
+      case "claim-lock":
+        return "Claimed lock";
+    }
+    // send / deposit fall through to the shared labels below.
+  }
   if (contract === "sato-yield" || contract === "sato-yield-v2") {
     switch (fn) {
       case "deposit":
@@ -209,11 +222,12 @@ export async function getRecentTransactions(
   }
 }
 
-// One balance-affecting event on the connected wallet's sato-transfer ledger,
-// reconstructed from the contract's on-chain `print` events. Positive delta =
-// credited (a faucet top-up or an incoming payment), negative = debited (an
-// outgoing send). With Earn v2, deposits and withdrawals move real wallet
-// balance to/from the pool principal, so they show up here too (sent/received).
+// One balance-affecting event on the connected wallet's ledger, reconstructed
+// from the contract's on-chain `print` events. Positive delta = credited (a
+// faucet top-up or an incoming payment), negative = debited (an outgoing send).
+// Auto-yield and lock/claim also move the balance but aren't `sbtc-*` events, so
+// the staircase tracks the explicit credits/debits and the caller anchors it to
+// the live (yield-inclusive) balance.
 export interface BalanceEvent {
   time: number; // ms epoch of the confirming block
   delta: bigint; // sats added (+) or removed (−)
@@ -223,9 +237,9 @@ export interface BalanceEvent {
 }
 
 // Reconstruct the wallet's real balance history — every credit AND debit, in
-// both directions — straight from the chain. sato-transfer emits `print`
-// events (not SIP-010 transfers), so an address's tx feed misses payments it
-// only *received*; instead we read the contract's own event log, which records
+// both directions — straight from the chain. The ledger emits `print` events
+// (not SIP-010 transfers), so an address's tx feed misses payments it only
+// *received*; instead we read the contract's own event log, which records
 // every `sbtc-mint`/`sbtc-transfer`, then join block times in one batch call.
 // Anchored to the live balance by the caller, this is a true, honest timeline.
 export async function getBalanceHistory(
@@ -233,7 +247,7 @@ export async function getBalanceHistory(
   limit = 50
 ): Promise<{ events: BalanceEvent[]; complete: boolean }> {
   try {
-    const contract = `${CONTRACTS.transfer.address}.${CONTRACTS.transfer.name}`;
+    const contract = `${CONTRACTS.ledger.address}.${CONTRACTS.ledger.name}`;
     const res = await fetch(
       `${API}/extended/v1/contract/${contract}/events?limit=${limit}`
     );
@@ -310,7 +324,7 @@ export function registerName(name: string) {
 
 // Send sBTC (in sats) to another principal.
 export function sendSbtc(recipient: string, amount: bigint) {
-  return callContract(CONTRACTS.transfer, "send", [
+  return callContract(CONTRACTS.ledger, "send", [
     Cl.principal(recipient),
     Cl.uint(amount),
   ]);
@@ -364,85 +378,101 @@ async function sponsoredCall(
 
 // Send sBTC gaslessly: the gas pool covers the fee. Returns the txId.
 export function sendSbtcSponsored(recipient: string, amount: bigint) {
-  return sponsoredCall(CONTRACTS.transfer, "send", [
+  return sponsoredCall(CONTRACTS.ledger, "send", [
     Cl.principal(recipient),
     Cl.uint(amount),
   ]);
 }
 
 // Devnet/testnet faucet: credit the caller's own balance so they have
-// something to send. Backed by sato-transfer's mint helper.
+// something to send. Backed by the ledger's mint helper — and that balance
+// immediately starts earning the base rate.
 export function fundSelf(amount: bigint) {
-  return callContract(CONTRACTS.transfer, "deposit", [Cl.uint(amount)]);
+  return callContract(CONTRACTS.ledger, "deposit", [Cl.uint(amount)]);
 }
 
-// --- earn (sato-yield pool) ---------------------------------------------
+// --- earn (sato-yield-v3: auto-earning ledger + optional lock tier) -------
 
-// A user's position in the yield pool, plus pool context. All sats except
-// rateBps (basis points of annual yield).
+// The user's earning picture on the v3 ledger. There is no separate pool: the
+// liquid balance auto-earns the base rate, and an optional lock moves sats into
+// the higher boost rate for a fixed term. All fields are sats except the
+// *RateBps fields (basis points of annual yield; 10000 bps = 100% APR).
 export interface EarnStats {
-  deposited: bigint; // principal the user has earning in the pool
-  earned: bigint; // yield accrued to the user (harvested + pending)
-  available: bigint; // the user's sBTC wallet balance, ready to deposit
-  poolTotal: bigint; // total sBTC the pool holds (principal + yield)
-  poolPrincipal: bigint; // total principal across all depositors (for pool share)
-  rateBps: bigint; // annual yield rate in basis points (10000 bps = 100% APR)
+  liquid: bigint; // spendable balance, auto-earning the base rate (live)
+  locked: bigint; // principal currently committed to the lock (boost) tier
+  lockValue: bigint; // locked principal + accrued boost yield, live
+  lockUnlock: bigint; // block height the lock matures (0 = no active lock)
+  height: bigint; // current chain tip, to count blocks until maturity
+  baseRateBps: bigint; // liquid (auto) rate in basis points
+  boostRateBps: bigint; // locked (boost) rate in basis points
+  totalSupply: bigint; // total liquid sBTC across all holders (context)
 }
 
 // Blocks the contract annualizes its rate over (mirrors BLOCKS_PER_YEAR in
-// sato-yield-v2). Lets the client project accrual between on-chain reads.
+// sato-yield-v3). Lets the client project accrual between on-chain reads.
 export const YIELD_BLOCKS_PER_YEAR = 52560;
 
-// Read a user's full Earn position in one shot (four parallel reads). v2 has
-// no internal "available" ledger — deposits pull straight from the user's
-// sato-transfer wallet, so `available` reads that wallet balance. Each read
-// degrades to 0n if sato-yield-v2 isn't reachable yet (e.g. pre-deploy), so
-// the Earn tab still renders instead of throwing.
+// Read a user's full earning picture in one shot. Every read degrades to 0n if
+// the ledger isn't reachable, so the Earn tab still renders instead of throwing.
+// `get-lock` returns a {amount,height,unlock} tuple; we pull principal + unlock
+// from it. The chain tip (best-effort, from /v2/info) drives time-to-unlock.
 export async function getEarnStats(who: string): Promise<EarnStats> {
-  const readUint = async (
-    contract: { address: string; name: string },
-    fn: string,
-    args: ClarityValue[]
-  ): Promise<bigint> => {
-    try {
-      return toBigInt(cvToValue(await readOnly(contract, fn, args, who)));
-    } catch {
-      return 0n;
-    }
+  const readUint = async (fn: string, args: ClarityValue[]): Promise<bigint> => {
+    try { return toBigInt(cvToValue(await readOnly(CONTRACTS.ledger, fn, args, who))); }
+    catch { return 0n; }
   };
-  const [deposited, earned, available, poolTotal, poolPrincipal, rateBps] =
+  // cvToValue may hand tuple fields back bare or wrapped as {type,value}; unwrap
+  // one level before coercing so we read the same on both shapes.
+  const field = (t: unknown, k: string): bigint => {
+    const f = (t as Record<string, unknown>)?.[k];
+    return toBigInt(f && typeof f === "object" && "value" in f ? (f as { value: unknown }).value : f);
+  };
+  const readLock = async (): Promise<{ amount: bigint; unlock: bigint }> => {
+    try {
+      const t = cvToValue(await readOnly(CONTRACTS.ledger, "get-lock", [Cl.principal(who)], who));
+      return { amount: field(t, "amount"), unlock: field(t, "unlock") };
+    } catch { return { amount: 0n, unlock: 0n }; }
+  };
+  const chainHeight = async (): Promise<bigint> => {
+    try {
+      const r = await fetch(`${API}/v2/info`);
+      return r.ok ? toBigInt((await r.json())?.stacks_tip_height) : 0n;
+    } catch { return 0n; }
+  };
+  const [liquid, lockValue, baseRateBps, boostRateBps, totalSupply, lock, height] =
     await Promise.all([
-      readUint(CONTRACTS.earn, "get-balance", [Cl.principal(who)]),
-      readUint(CONTRACTS.earn, "get-yield", [Cl.principal(who)]),
-      readUint(CONTRACTS.transfer, "get-balance", [Cl.principal(who)]),
-      readUint(CONTRACTS.earn, "get-pool-total", []),
-      readUint(CONTRACTS.earn, "get-pool-principal", []),
-      readUint(CONTRACTS.earn, "get-yield-rate", []),
+      readUint("get-balance", [Cl.principal(who)]),
+      readUint("get-lock-value", [Cl.principal(who)]),
+      readUint("get-base-rate", []),
+      readUint("get-boost-rate", []),
+      readUint("get-total-supply", []),
+      readLock(),
+      chainHeight(),
     ]);
-  return { deposited, earned, available, poolTotal, poolPrincipal, rateBps };
+  return { liquid, locked: lock.amount, lockValue, lockUnlock: lock.unlock, height, baseRateBps, boostRateBps, totalSupply };
 }
 
-// Deposit sBTC (from the pool ledger) into the yield pool to start earning.
-export function earnDeposit(amount: bigint) {
-  return callContract(CONTRACTS.earn, "deposit", [Cl.uint(amount)]);
+// Lock sats from the liquid balance into the boost tier for `termBlocks`. The
+// locked sats leave the liquid balance (they stop earning the base rate and
+// start earning the higher boost rate) until the term elapses. One lock at a
+// time — claim the current one before opening another.
+export function earnLock(amount: bigint, termBlocks: bigint) {
+  return callContract(CONTRACTS.ledger, "lock", [
+    Cl.uint(amount),
+    Cl.uint(termBlocks),
+  ]);
 }
 
-// Withdraw deposited principal. Always harvests and pays out earned yield too.
-export function earnWithdraw(amount: bigint) {
-  return callContract(CONTRACTS.earn, "withdraw", [Cl.uint(amount)]);
+// Claim a matured lock: returns the locked principal + accrued boost yield to
+// the liquid balance. Reverts on-chain until the unlock height.
+export function earnClaim() {
+  return callContract(CONTRACTS.ledger, "claim-lock", []);
 }
 
-// Ops helper: top up the pool's sBTC reserve from the caller's wallet so
-// accrued yield is payable. Permissionless — anyone can back the pool (on
-// mainnet a strategy contract routes real returns through here).
-export function fundReserve(amount: bigint) {
-  return callContract(CONTRACTS.earn, "fund-reserve", [Cl.uint(amount)]);
-}
-
-// Testnet helper: credit the caller's sBTC wallet balance (sato-transfer
-// faucet) so they have sBTC to deposit. v2 deposits pull from this wallet.
+// Testnet helper: credit the caller's ledger balance (the faucet) so they have
+// sBTC to lock. Same call as fundSelf; kept distinct for the Earn-tab toast.
 export function fundEarn(amount: bigint) {
-  return callContract(CONTRACTS.transfer, "deposit", [Cl.uint(amount)]);
+  return callContract(CONTRACTS.ledger, "deposit", [Cl.uint(amount)]);
 }
 
 // --- gas sponsorship (sato-sponsor pool) --------------------------------

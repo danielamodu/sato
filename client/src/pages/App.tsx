@@ -51,12 +51,13 @@ import {
   getRecentTransactions,
   getBalanceHistory,
   getEarnStats,
-  earnDeposit,
-  earnWithdraw,
+  earnLock,
+  earnClaim,
   fundEarn,
   getSponsorStats,
   sponsorTopUp,
   isNameAvailable,
+  YIELD_BLOCKS_PER_YEAR,
   type SatoTx,
   type BalanceEvent,
   type EarnStats,
@@ -191,14 +192,17 @@ function SatoApp() {
   const [txs, setTxs] = useState<SatoTx[]>([]);
   const [txLoading, setTxLoading] = useState(true);
   const [earn, setEarn] = useState<EarnStats>({
-    deposited: 0n,
-    earned: 0n,
-    available: 0n,
-    poolTotal: 0n,
-    poolPrincipal: 0n,
-    rateBps: 0n,
+    liquid: 0n,
+    locked: 0n,
+    lockValue: 0n,
+    lockUnlock: 0n,
+    height: 0n,
+    baseRateBps: 0n,
+    boostRateBps: 0n,
+    totalSupply: 0n,
   });
   const [earnAmount, setEarnAmount] = useState("");
+  const [earnTerm, setEarnTerm] = useState("100");
   const [sponsor, setSponsor] = useState<SponsorStats>({
     poolBalance: 0n,
     remaining: 0n,
@@ -249,12 +253,14 @@ function SatoApp() {
       setTxs([]);
       setEvents([]);
       setEarn({
-        deposited: 0n,
-        earned: 0n,
-        available: 0n,
-        poolTotal: 0n,
-        poolPrincipal: 0n,
-        rateBps: 0n,
+        liquid: 0n,
+        locked: 0n,
+        lockValue: 0n,
+        lockUnlock: 0n,
+        height: 0n,
+        baseRateBps: 0n,
+        boostRateBps: 0n,
+        totalSupply: 0n,
       });
       setSponsor({
         poolBalance: 0n,
@@ -285,10 +291,10 @@ function SatoApp() {
     };
   }, []);
 
-  // While the Earn tab is open, re-read the pool position on a short interval
-  // so the live-yield ticker re-syncs to the chain and the pool figures stay
-  // current. Yield on sato-yield-v2 accrues every block, so this keeps the
-  // numbers honestly moving without a full page refresh.
+  // While the Earn tab is open, re-read the ledger position on a short interval
+  // so the live-yield ticker re-syncs to the chain and the figures stay current.
+  // The v3 balance accrues every block, so this keeps the numbers honestly
+  // moving without a full page refresh.
   useEffect(() => {
     if (view !== "earn" || !address) return;
     let alive = true;
@@ -296,10 +302,10 @@ function SatoApp() {
       getEarnStats(address)
         .then((e) => {
           // The public testnet node rate-limits; getEarnStats degrades failed
-          // reads to 0n. yield-rate-bps is a nonzero contract constant, so
-          // rateBps===0 means this poll partially failed — skip it rather than
-          // flash the live figures to zero and snap back on the next tick.
-          if (alive && e.rateBps > 0n) setEarn(e);
+          // reads to 0n. base-rate-bps is a nonzero contract constant, so
+          // baseRateBps===0 means this poll partially failed — skip it rather
+          // than flash the live figures to zero and snap back on the next tick.
+          if (alive && e.baseRateBps > 0n) setEarn(e);
         })
         .catch(() => {});
     }, 12_000);
@@ -464,15 +470,16 @@ function SatoApp() {
     }
   };
 
-  const onEarnDeposit = async () => {
+  const onLock = async () => {
     const amount = BigInt(earnAmount || "0");
-    if (amount <= 0n) return;
-    setBusy("earn-deposit");
+    const term = BigInt(earnTerm || "0");
+    if (amount <= 0n || term <= 0n) return;
+    setBusy("earn-lock");
     try {
-      const res = await earnDeposit(amount);
+      const res = await earnLock(amount, term);
       const txid = txidOf(res);
-      toast.success(`Depositing ${fmt(amount)} sats`, {
-        description: "into the Earn pool",
+      toast.success(`Locking ${fmt(amount)} sats`, {
+        description: `${fmt(term)} blocks at the boost rate`,
         action: txid
           ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
           : undefined,
@@ -480,29 +487,26 @@ function SatoApp() {
       setEarnAmount("");
       if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
-      toast.error("Deposit cancelled", { description: e?.message });
+      toast.error("Lock cancelled", { description: e?.message });
     } finally {
       setBusy(null);
     }
   };
 
-  const onEarnWithdraw = async () => {
-    const amount = BigInt(earnAmount || "0");
-    if (amount <= 0n) return;
-    setBusy("earn-withdraw");
+  const onClaim = async () => {
+    setBusy("earn-claim");
     try {
-      const res = await earnWithdraw(amount);
+      const res = await earnClaim();
       const txid = txidOf(res);
-      toast.success(`Withdrawing ${fmt(amount)} sats`, {
-        description: "principal + earned yield",
+      toast.success("Claiming your lock", {
+        description: "principal + boost yield back to your balance",
         action: txid
           ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
           : undefined,
       });
-      setEarnAmount("");
       if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
-      toast.error("Withdrawal cancelled", { description: e?.message });
+      toast.error("Claim cancelled", { description: e?.message });
     } finally {
       setBusy(null);
     }
@@ -768,8 +772,10 @@ function SatoApp() {
             btcUsd={btcUsd}
             earnAmount={earnAmount}
             setEarnAmount={setEarnAmount}
-            onDeposit={onEarnDeposit}
-            onWithdraw={onEarnWithdraw}
+            earnTerm={earnTerm}
+            setEarnTerm={setEarnTerm}
+            onLock={onLock}
+            onClaim={onClaim}
             onFaucet={onEarnFaucet}
             busy={busy}
           />
@@ -892,18 +898,19 @@ function AnimatedNumber({
   return <>{format(shown)}</>;
 }
 
-// Stream the user's accrued yield between on-chain reads. sato-yield-v2 accrues
+// Stream a live-growing figure between on-chain reads. The v3 ledger accrues
 // every block, so instead of sitting still between refreshes we extend the last
 // two real readings at their observed velocity (with the annualised rate as a
 // floor), then snap back to truth on the next read. Never ticks downward (a
-// withdrawal resets the base), and stays static under reduced motion.
-function useLiveYield(
-  earned: bigint,
-  deposited: bigint,
+// spend or claim resets the base), and stays static under reduced motion.
+// `amount` is the value to stream; `principal` is the balance the rate earns on.
+function useLiveAmount(
+  amount: bigint,
+  principal: bigint,
   rateBps: bigint
 ): number {
   const reduced = usePrefersReducedMotion();
-  const target = Number(earned);
+  const target = Number(amount);
   const [live, setLive] = useState(target);
   const sampleRef = useRef({ value: target, at: performance.now() });
   const velRef = useRef(0); // sats per second
@@ -916,15 +923,15 @@ function useLiveYield(
     const dt = (now - prev.at) / 1000;
     const observed = dt > 0 ? (target - prev.value) / dt : 0;
     // Annualised-rate floor: principal * (rateBps/10000) / seconds-per-year.
-    const floor = (Number(deposited) * (Number(rateBps) / 10000)) / 31_557_600;
+    const floor = (Number(principal) * (Number(rateBps) / 10000)) / 31_557_600;
     // Damp the observed rate so we systematically under-project between reads;
     // each re-sync then nudges the figure *up* to the true value rather than
-    // ever snapping it down. Withdrawals still drop cleanly (target falls).
-    velRef.current = deposited > 0n ? Math.max(0, observed * 0.6, floor) : 0;
+    // ever snapping it down. A spend/claim still drops cleanly (target falls).
+    velRef.current = principal > 0n ? Math.max(0, observed * 0.6, floor) : 0;
     sampleRef.current = { value: target, at: now };
     shownRef.current = Math.floor(target);
     setLive(target);
-  }, [target, deposited, rateBps]);
+  }, [target, principal, rateBps]);
 
   useEffect(() => {
     if (reduced || velRef.current <= 0) return;
@@ -940,7 +947,7 @@ function useLiveYield(
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [reduced, target, deposited, rateBps]);
+  }, [reduced, target, principal, rateBps]);
 
   return reduced ? target : live;
 }
@@ -2046,10 +2053,11 @@ function Ring({
   );
 }
 
-// The Earn headline: a live, streaming "yield earned" figure paired with a
-// radial gauge of the user's share of the pool. Both are real on-chain values —
-// the ticker just extends the last reading at the rate the chain is paying, and
-// re-syncs on every poll. Adapts to a not-yet-deposited state.
+// The Earn headline: the user's liquid balance, streaming upward at the base
+// rate it auto-earns — the whole pitch of the v3 ledger, shown live. The ring
+// tracks how much of their position sits in the higher boost (locked) tier.
+// Both are real on-chain values; the ticker just extends the last reading at
+// the rate the chain is paying and re-syncs on every poll.
 function EarnHero({
   earn,
   btcUsd,
@@ -2057,61 +2065,70 @@ function EarnHero({
   earn: EarnStats;
   btcUsd: number | null;
 }) {
-  const liveYield = useLiveYield(earn.earned, earn.deposited, earn.rateBps);
-  const active = earn.deposited > 0n;
-  const apr = Number(earn.rateBps) / 100; // bps -> %
-  const share =
-    earn.poolPrincipal > 0n
-      ? Number(earn.deposited) / Number(earn.poolPrincipal)
-      : 0;
-  // Honest per-day projection from the annual rate.
-  const perDay = (Number(earn.deposited) * (Number(earn.rateBps) / 10000)) / 365;
-  const shownYield = Math.floor(liveYield);
+  const liveBalance = useLiveAmount(earn.liquid, earn.liquid, earn.baseRateBps);
+  const shown = Math.floor(liveBalance);
+  const earning = earn.liquid > 0n;
+  const baseApr = Number(earn.baseRateBps) / 100; // bps -> %
+  const boostApr = Number(earn.boostRateBps) / 100;
+  // Honest per-day growth on the liquid balance from the annual base rate.
+  const perDay = (Number(earn.liquid) * (Number(earn.baseRateBps) / 10000)) / 365;
+  const hasLock = earn.locked > 0n;
+  const total = earn.liquid + earn.lockValue;
+  const lockedShare = total > 0n ? Number(earn.lockValue) / Number(total) : 0;
+  const blocksLeft =
+    earn.lockUnlock > earn.height ? earn.lockUnlock - earn.height : 0n;
   const sharePctText =
-    share > 0 && share < 0.001
+    lockedShare > 0 && lockedShare < 0.001
       ? "<0.1"
-      : (share * 100).toLocaleString(undefined, {
-          maximumFractionDigits: share < 0.1 ? 1 : 0,
+      : (lockedShare * 100).toLocaleString(undefined, {
+          maximumFractionDigits: lockedShare < 0.1 ? 1 : 0,
         });
 
   return (
     <section className="earn-hero">
       <div className="eh-main">
         <div className="eh-head">
-          <span className="eh-eyebrow">Yield earned</span>
-          {active && (
-            <span className="eh-live" title="Updating live from the pool rate">
+          <span className="eh-eyebrow">Balance earning</span>
+          {earning && (
+            <span
+              className="eh-live"
+              title="Your balance earns automatically, every block"
+            >
               <span className="eh-live-dot" /> Live
             </span>
           )}
         </div>
         <div className="eh-value">
-          <span className="eh-num">{shownYield.toLocaleString()}</span>
+          <span className="eh-num">{shown.toLocaleString()}</span>
           <span className="eh-unit">sats</span>
         </div>
         <div className="eh-meta">
-          {apr > 0 && (
-            <span className="eh-apr">{apr.toLocaleString()}% APR</span>
+          {baseApr > 0 && (
+            <span className="eh-apr">{baseApr.toLocaleString()}% APR</span>
           )}
-          {active ? (
+          {earning ? (
             <span className="eh-note">
               ≈ {Math.round(perDay).toLocaleString()} sats/day
-              {btcUsd != null
-                ? ` · ${fmtUsd(BigInt(shownYield), btcUsd)} earned`
-                : ""}
+              {btcUsd != null ? ` · ${fmtUsd(BigInt(shown), btcUsd)}` : ""}
             </span>
           ) : (
-            <span className="eh-note">Deposit sBTC below to start earning</span>
+            <span className="eh-note">
+              Get test sBTC — it earns the moment you hold it
+            </span>
           )}
         </div>
       </div>
       <div className="eh-ring">
-        <Ring fraction={share}>
+        <Ring fraction={lockedShare}>
           <span className="ring-pct">{sharePctText}%</span>
-          <span className="ring-cap">pool share</span>
+          <span className="ring-cap">locked</span>
         </Ring>
         <span className="eh-ring-sub">
-          {fmt(earn.deposited)} of {fmt(earn.poolPrincipal)} sats
+          {hasLock
+            ? blocksLeft > 0n
+              ? `${fmt(blocksLeft)} blocks to unlock`
+              : "Lock matured — ready to claim"
+            : `Lock to earn ${boostApr.toLocaleString()}%`}
         </span>
       </div>
     </section>
@@ -2123,8 +2140,10 @@ function EarnView(props: {
   btcUsd: number | null;
   earnAmount: string;
   setEarnAmount: (v: string) => void;
-  onDeposit: () => void;
-  onWithdraw: () => void;
+  earnTerm: string;
+  setEarnTerm: (v: string) => void;
+  onLock: () => void;
+  onClaim: () => void;
   onFaucet: () => void;
   busy: string | null;
 }) {
@@ -2133,48 +2152,46 @@ function EarnView(props: {
     btcUsd,
     earnAmount,
     setEarnAmount,
-    onDeposit,
-    onWithdraw,
+    earnTerm,
+    setEarnTerm,
+    onLock,
+    onClaim,
     onFaucet,
     busy,
   } = props;
-
-  // Deposit and withdraw are opposite actions with different ceilings — deposit
-  // is capped by your wallet balance, withdraw by your deposited principal — so
-  // one amount field feeding both buttons read as ambiguous ("how do I get my
-  // yield out?"). Split them into an explicit mode toggle, each with the right
-  // max, hint, and payout.
-  const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
+  const hasLock = earn.locked > 0n;
+  const baseApr = Number(earn.baseRateBps) / 100;
+  const boostApr = Number(earn.boostRateBps) / 100;
 
   let amountSats = 0n;
-  try {
-    amountSats = BigInt(earnAmount || "0");
-  } catch {
-    amountSats = 0n;
-  }
-  const max = mode === "deposit" ? earn.available : earn.deposited;
-  const over = amountSats > max;
-  // Any withdrawal harvests ALL accrued yield on top of the principal pulled,
-  // so the real payout is what you type plus everything you've earned.
-  const willReceive = amountSats + earn.earned;
-  const busyKey = mode === "deposit" ? "earn-deposit" : "earn-withdraw";
-  const actionDisabled =
-    busy === busyKey ||
-    amountSats <= 0n ||
-    over ||
-    (mode === "withdraw" && earn.deposited === 0n);
+  try { amountSats = BigInt(earnAmount || "0"); } catch { amountSats = 0n; }
+  let termBlocks = 0n;
+  try { termBlocks = BigInt(earnTerm || "0"); } catch { termBlocks = 0n; }
 
-  const switchMode = (m: "deposit" | "withdraw") => {
-    setMode(m);
-    setEarnAmount("");
-  };
+  const over = amountSats > earn.liquid;
+  // Projected boost yield at maturity — the contract's exact integer formula:
+  // amount * boost-bps * term / (blocks-per-year * 10000).
+  const projYield =
+    amountSats > 0n && termBlocks > 0n
+      ? (amountSats * earn.boostRateBps * termBlocks) /
+        (BigInt(YIELD_BLOCKS_PER_YEAR) * 10000n)
+      : 0n;
+  const lockDisabled =
+    busy === "earn-lock" || amountSats <= 0n || termBlocks <= 0n || over;
 
+  // Live value of an active lock, streaming at the boost rate between reads.
+  const liveLock = useLiveAmount(earn.lockValue, earn.locked, earn.boostRateBps);
+  const blocksLeft =
+    earn.lockUnlock > earn.height ? earn.lockUnlock - earn.height : 0n;
+  const matured = hasLock && earn.height > 0n && blocksLeft === 0n;
+
+  const TERMS = ["25", "100", "250"];
   return (
     <>
       <header className="page-head">
         <div>
           <h1>Earn</h1>
-          <p>Put idle sBTC to work and earn yield on your balance.</p>
+          <p>Your balance earns automatically. Lock sats for a higher rate.</p>
         </div>
         <button
           className="btn soft"
@@ -2190,151 +2207,166 @@ function EarnView(props: {
 
       <div className="stat-row">
         <StatTile
-          label="Deposited"
-          icon={TrendingUp}
-          countTo={Number(earn.deposited)}
-          unit="sats"
-          sub="Principal earning in the pool"
-        />
-        <StatTile
-          label="Position value"
-          icon={Coins}
-          countTo={Number(earn.deposited + earn.earned)}
-          unit="sats"
-          sub="Principal + earned yield"
-        />
-        <StatTile
-          label="Available"
+          label="Earning now"
           icon={Wallet}
-          countTo={Number(earn.available)}
+          countTo={Number(earn.liquid)}
           unit="sats"
-          sub="Ready to deposit"
+          sub={`Auto-earns ${baseApr.toLocaleString()}% APR`}
+        />
+        <StatTile
+          label="Locked"
+          icon={TrendingUp}
+          countTo={Number(hasLock ? liveLock : 0)}
+          unit="sats"
+          sub={hasLock ? `Boost ${boostApr.toLocaleString()}% APR` : "Nothing locked yet"}
+        />
+        <StatTile
+          label="Total value"
+          icon={Coins}
+          countTo={Number(earn.liquid + earn.lockValue)}
+          unit="sats"
+          sub="Liquid + locked"
         />
       </div>
-
       <div className="send-grid">
         <section className="panel send-panel">
-          <div className="earn-modes" role="tablist" aria-label="Deposit or withdraw">
-            <button
-              role="tab"
-              aria-selected={mode === "deposit"}
-              className={`earn-mode${mode === "deposit" ? " active" : ""}`}
-              onClick={() => switchMode("deposit")}
-            >
-              <ArrowDownLeft size={15} /> Deposit
-            </button>
-            <button
-              role="tab"
-              aria-selected={mode === "withdraw"}
-              className={`earn-mode${mode === "withdraw" ? " active" : ""}`}
-              onClick={() => switchMode("withdraw")}
-            >
-              <ArrowUpRight size={15} /> Withdraw
-            </button>
-          </div>
-
-          <label className="field-label">Amount</label>
-          <div className="text-field block">
-            <input
-              className="field-input"
-              type="number"
-              min="1"
-              placeholder="100000"
-              value={earnAmount}
-              onChange={(e) => setEarnAmount(e.target.value)}
-            />
-            <button
-              type="button"
-              className="field-max"
-              onClick={() => setEarnAmount(max > 0n ? max.toString() : "")}
-              disabled={max <= 0n}
-            >
-              {mode === "withdraw" ? "All" : "Max"}
-            </button>
-            <span className="field-trail">sats</span>
-          </div>
-          {amountSats > 0n && btcUsd != null && (
-            <span className="field-usd">≈ {fmtUsd(amountSats, btcUsd)}</span>
-          )}
-          <span className="field-hint muted">
-            {mode === "deposit"
-              ? `Available to deposit ${fmt(earn.available)} sats`
-              : `Deposited principal ${fmt(earn.deposited)} sats`}
-          </span>
-          {earnAmount && over && (
-            <span className="field-hint warn">
-              {mode === "deposit"
-                ? "More than your available balance"
-                : "More than your deposited principal"}
-            </span>
-          )}
-          {mode === "withdraw" && amountSats <= 0n && earn.earned > 0n && (
-            <span className="field-hint ok">
-              Any withdrawal also claims {fmt(earn.earned)} sats of yield
-            </span>
-          )}
-          {mode === "withdraw" && amountSats > 0n && (
-            <div className="earn-receive">
-              <span className="earn-receive-label">
-                <span>You'll receive</span>
-                <small>
-                  {fmt(amountSats)} principal
-                  {earn.earned > 0n ? ` + ${fmt(earn.earned)} yield` : ""}
-                </small>
+          {hasLock ? (
+            <>
+              <span className="panel-eyebrow">Your lock</span>
+              <div className="lock-card">
+                <div className="lock-row">
+                  <span>Locked principal</span>
+                  <strong>{fmt(earn.locked)} <small>sats</small></strong>
+                </div>
+                <div className="lock-row">
+                  <span>Value now</span>
+                  <strong>{Math.floor(liveLock).toLocaleString()} <small>sats</small></strong>
+                </div>
+                <div className="lock-row">
+                  <span>Boost yield</span>
+                  <strong className="lock-yield">
+                    +{fmt(earn.lockValue > earn.locked ? earn.lockValue - earn.locked : 0n)}{" "}
+                    <small>sats</small>
+                  </strong>
+                </div>
+                <div className={`lock-status${matured ? " matured" : ""}`}>
+                  {matured
+                    ? "Matured — claim your principal + boost yield"
+                    : `Unlocks in ${fmt(blocksLeft)} blocks`}
+                </div>
+              </div>
+              <div className="earn-actions">
+                <button
+                  className="btn primary"
+                  onClick={onClaim}
+                  disabled={busy === "earn-claim" || !matured}
+                >
+                  <ArrowUpRight size={16} />
+                  {busy === "earn-claim"
+                    ? "Claiming…"
+                    : matured
+                      ? "Claim principal + yield"
+                      : `Locked for ${fmt(blocksLeft)} more blocks`}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="panel-eyebrow">Lock for the boost rate</span>
+              <label className="field-label">Amount</label>
+              <div className="text-field block">
+                <input
+                  className="field-input"
+                  type="number"
+                  min="1"
+                  placeholder="100000"
+                  value={earnAmount}
+                  onChange={(e) => setEarnAmount(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="field-max"
+                  onClick={() => setEarnAmount(earn.liquid > 0n ? earn.liquid.toString() : "")}
+                  disabled={earn.liquid <= 0n}
+                >
+                  Max
+                </button>
+                <span className="field-trail">sats</span>
+              </div>
+              {amountSats > 0n && btcUsd != null && (
+                <span className="field-usd">≈ {fmtUsd(amountSats, btcUsd)}</span>
+              )}
+              <span className="field-hint muted">
+                Available to lock {fmt(earn.liquid)} sats
               </span>
-              <span className="earn-receive-total">
-                {fmt(willReceive)} <small>sats</small>
+              {earnAmount && over && (
+                <span className="field-hint warn">
+                  More than your available balance
+                </span>
+              )}
+              <label className="field-label" style={{ marginTop: 16 }}>Term</label>
+              <div className="term-presets" role="group" aria-label="Lock term">
+                {TERMS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`term-preset${earnTerm === t ? " active" : ""}`}
+                    onClick={() => setEarnTerm(t)}
+                  >
+                    {t} blocks
+                  </button>
+                ))}
+              </div>
+              <span className="field-hint muted">
+                ~a few seconds per block on testnet — locks mature fast for the demo.
               </span>
-            </div>
-          )}
 
-          <div className="earn-actions">
-            {mode === "deposit" ? (
-              <button
-                className="btn primary"
-                onClick={onDeposit}
-                disabled={actionDisabled}
-              >
-                <ArrowDownLeft size={16} />
-                {busy === "earn-deposit" ? "Depositing…" : "Deposit"}
-              </button>
-            ) : (
-              <button
-                className="btn primary"
-                onClick={onWithdraw}
-                disabled={actionDisabled}
-              >
-                <ArrowUpRight size={16} />
-                {busy === "earn-withdraw"
-                  ? "Withdrawing…"
-                  : earn.earned > 0n
-                    ? "Withdraw + claim yield"
-                    : "Withdraw"}
-              </button>
-            )}
-          </div>
+              {projYield > 0n && (
+                <div className="earn-receive">
+                  <span className="earn-receive-label">
+                    <span>Boost yield at maturity</span>
+                    <small>on {fmt(amountSats)} sats over {fmt(termBlocks)} blocks</small>
+                  </span>
+                  <span className="earn-receive-total">
+                    +{fmt(projYield)} <small>sats</small>
+                  </span>
+                </div>
+              )}
+
+              <div className="earn-actions">
+                <button
+                  className="btn primary"
+                  onClick={onLock}
+                  disabled={lockDisabled}
+                >
+                  <ArrowDownLeft size={16} />
+                  {busy === "earn-lock" ? "Locking…" : "Lock for boost"}
+                </button>
+              </div>
+            </>
+          )}
         </section>
 
         <aside className="panel send-aside">
           <span className="panel-eyebrow">How earning works</span>
           <ul className="tips">
             <li>
-              <span className="tip-dot" /> Deposited sBTC earns a{" "}
-              <b>pro-rata share</b> of pool yield.
+              <span className="tip-dot" /> Just holding sBTC earns{" "}
+              <b>{baseApr.toLocaleString()}% APR</b> — no deposit step.
             </li>
             <li>
-              <span className="tip-dot" /> No lockup — withdraw your principal
-              anytime.
+              <span className="tip-dot" /> Lock sats to earn the higher{" "}
+              <b>{boostApr.toLocaleString()}% boost</b> rate.
             </li>
             <li>
-              <span className="tip-dot" /> Any withdrawal <b>pays out all earned
-              yield</b> too.
+              <span className="tip-dot" /> Claim at maturity for your{" "}
+              <b>principal + boost yield</b>.
             </li>
           </ul>
           <div className="aside-balance">
-            <span>Pool size</span>
+            <span>Total in Sato</span>
             <strong>
-              {fmt(earn.poolTotal)} <small>sats</small>
+              {fmt(earn.totalSupply)} <small>sats</small>
             </strong>
           </div>
         </aside>
@@ -2667,11 +2699,19 @@ const shellStyles = `
 .send-panel .btn.full{margin-top:22px;}
 .earn-actions{display:flex;gap:10px;margin-top:22px;}
 .earn-actions .btn{flex:1;}
-.earn-modes{display:flex;gap:4px;padding:4px;background:var(--paper);border:1px solid var(--line);border-radius:12px;margin-bottom:18px;}
-.earn-mode{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;background:transparent;color:var(--text-muted);padding:10px 16px;border-radius:9px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s,box-shadow .15s;}
-.earn-mode:hover{color:var(--ink);}
-.earn-mode.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
-.earn-mode.active svg{color:var(--orange);}
+.term-presets{display:flex;gap:8px;}
+.term-preset{flex:1;border:1px solid var(--line);background:var(--white);color:var(--text-muted);padding:10px 8px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:background .14s,border-color .14s,color .14s;}
+.term-preset:hover{color:var(--ink);border-color:#d7d3c9;}
+.term-preset.active{background:var(--ink);border-color:var(--ink);color:var(--white);}
+.lock-card{display:flex;flex-direction:column;padding:6px 20px 16px;background:#fafaf8;border:1px solid var(--line);border-radius:14px;margin-top:4px;}
+.lock-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:9px 0;}
+.lock-row+.lock-row{border-top:1px solid var(--line);}
+.lock-row span{font-size:13px;color:var(--text-muted);font-weight:600;}
+.lock-row strong{font-size:16px;font-weight:700;letter-spacing:-.01em;}
+.lock-row strong small{font-size:11.5px;color:var(--text-muted);font-weight:600;}
+.lock-yield{color:var(--orange);}
+.lock-status{margin-top:12px;padding:10px 14px;background:var(--white);border:1px solid var(--line);border-radius:10px;font-size:12.5px;font-weight:700;color:var(--text-muted);text-align:center;}
+.lock-status.matured{color:#0f7a3d;border-color:#bfe6cd;background:#f2fbf5;}
 .field-max{flex-shrink:0;border:1px solid var(--line);background:var(--white);color:var(--ink);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:5px 9px;border-radius:7px;cursor:pointer;font-family:var(--sans);transition:background .14s,border-color .14s;}
 .field-max:hover:not(:disabled){background:#ecebe5;border-color:#d7d3c9;}
 .field-max:disabled{opacity:.4;cursor:not-allowed;}
