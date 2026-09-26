@@ -832,15 +832,142 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
+// --- motion helpers ------------------------------------------------------
+
+// True when the OS "reduce motion" setting is on, kept live. Every count-up,
+// ticker, and draw animation reads this and snaps to a static state so we
+// never fight the user's accessibility preference.
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const on = () => setReduced(m.matches);
+    on();
+    m.addEventListener?.("change", on);
+    return () => m.removeEventListener?.("change", on);
+  }, []);
+  return reduced;
+}
+
+// Ease a number from its previous value to `value` (easeOutCubic). We only ever
+// animate the transition between two *real* readings — never invent data — so
+// balances and counts feel alive. Snaps instantly under reduced motion.
+function useCountUp(value: number, duration = 650): number {
+  const reduced = usePrefersReducedMotion();
+  const [display, setDisplay] = useState(value);
+  const fromRef = useRef(value);
+  const rafRef = useRef(0);
+  useEffect(() => {
+    if (reduced || value === fromRef.current) {
+      setDisplay(value);
+      fromRef.current = value;
+      return;
+    }
+    const from = fromRef.current;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(from + (value - from) * eased);
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+      else fromRef.current = value;
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [value, duration, reduced]);
+  return display;
+}
+
+// A number that eases to its latest value; `format` maps it to a string.
+function AnimatedNumber({
+  value,
+  format = (n: number) => Math.round(n).toLocaleString(),
+  duration,
+}: {
+  value: number;
+  format?: (n: number) => string;
+  duration?: number;
+}) {
+  const shown = useCountUp(value, duration);
+  return <>{format(shown)}</>;
+}
+
+// Stream the user's accrued yield between on-chain reads. sato-yield-v2 accrues
+// every block, so instead of sitting still between refreshes we extend the last
+// two real readings at their observed velocity (with the annualised rate as a
+// floor), then snap back to truth on the next read. Never ticks downward (a
+// withdrawal resets the base), and stays static under reduced motion.
+function useLiveYield(
+  earned: bigint,
+  deposited: bigint,
+  rateBps: bigint
+): number {
+  const reduced = usePrefersReducedMotion();
+  const target = Number(earned);
+  const [live, setLive] = useState(target);
+  const sampleRef = useRef({ value: target, at: performance.now() });
+  const velRef = useRef(0); // sats per second
+  const shownRef = useRef(Math.floor(target)); // last integer we rendered
+  const rafRef = useRef(0);
+
+  useEffect(() => {
+    const now = performance.now();
+    const prev = sampleRef.current;
+    const dt = (now - prev.at) / 1000;
+    const observed = dt > 0 ? (target - prev.value) / dt : 0;
+    // Annualised-rate floor: principal * (rateBps/10000) / seconds-per-year.
+    const floor = (Number(deposited) * (Number(rateBps) / 10000)) / 31_557_600;
+    // Damp the observed rate so we systematically under-project between reads;
+    // each re-sync then nudges the figure *up* to the true value rather than
+    // ever snapping it down. Withdrawals still drop cleanly (target falls).
+    velRef.current = deposited > 0n ? Math.max(0, observed * 0.6, floor) : 0;
+    sampleRef.current = { value: target, at: now };
+    shownRef.current = Math.floor(target);
+    setLive(target);
+  }, [target, deposited, rateBps]);
+
+  useEffect(() => {
+    if (reduced || velRef.current <= 0) return;
+    const loop = () => {
+      const { value, at } = sampleRef.current;
+      const next = value + velRef.current * ((performance.now() - at) / 1000);
+      // Only re-render when the whole-sat figure actually changes.
+      if (Math.floor(next) !== shownRef.current) {
+        shownRef.current = Math.floor(next);
+        setLive(next);
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [reduced, target, deposited, rateBps]);
+
+  return reduced ? target : live;
+}
+
 // A glanceable metric tile for the overview header row.
 function StatTile(props: {
   label: string;
   icon: typeof Coins;
-  value: ReactNode;
+  value?: ReactNode;
+  countTo?: number;
+  unit?: string;
+  countFormat?: (n: number) => string;
   sub?: string;
   big?: boolean;
+  gauge?: number;
 }) {
-  const { label, icon: Icon, value, sub, big } = props;
+  const {
+    label,
+    icon: Icon,
+    value,
+    countTo,
+    unit,
+    countFormat,
+    sub,
+    big,
+    gauge,
+  } = props;
   return (
     <div className={big ? "stat-tile big" : "stat-tile"}>
       <div className="stat-head">
@@ -849,8 +976,30 @@ function StatTile(props: {
           <Icon size={15} />
         </span>
       </div>
-      <div className="stat-value">{value}</div>
+      <div className="stat-value">
+        {countTo != null ? (
+          <>
+            <AnimatedNumber value={countTo} format={countFormat} />
+            {unit ? (
+              <>
+                {" "}
+                <small>{unit}</small>
+              </>
+            ) : null}
+          </>
+        ) : (
+          value
+        )}
+      </div>
       {sub && <span className="stat-sub">{sub}</span>}
+      {gauge != null && (
+        <span className="stat-gauge">
+          <span
+            className="stat-gauge-fill"
+            style={{ width: `${Math.max(0, Math.min(1, gauge)) * 100}%` }}
+          />
+        </span>
+      )}
     </div>
   );
 }
@@ -989,7 +1138,12 @@ function BalanceHero({
           <span className="bh-eyebrow">Total balance</span>
           <div className="bh-value">
             {btcUsd != null ? (
-              <span className="bh-num">{fmtUsd(balance, btcUsd)}</span>
+              <span className="bh-num">
+                <AnimatedNumber
+                  value={(Number(balance) / 1e8) * btcUsd}
+                  format={fmtUsdNum}
+                />
+              </span>
             ) : (
               <span className="bh-num">
                 {fmtBtc(balance)} <small>BTC</small>
@@ -1265,7 +1419,8 @@ function Overview(props: {
         <StatTile
           label="Transactions"
           icon={Hash}
-          value={txLoading ? "—" : String(txs.length)}
+          value={txLoading ? "—" : undefined}
+          countTo={txLoading ? undefined : txs.length}
           sub="Recent contract calls"
         />
         <StatTile
@@ -1834,6 +1989,135 @@ function ReceiveView(props: {
 }
 
 // --- Earn view (sato-yield pool) -----------------------------------------
+// A radial gauge for a 0..1 fraction — a faint ink track under an orange arc
+// that draws in from empty on mount (and eases to any new value). Center slot
+// holds a label. Static offset under reduced motion.
+function Ring({
+  fraction,
+  size = 128,
+  stroke = 11,
+  children,
+}: {
+  fraction: number;
+  size?: number;
+  stroke?: number;
+  children?: ReactNode;
+}) {
+  const reduced = usePrefersReducedMotion();
+  const f = Math.max(0, Math.min(1, isFinite(fraction) ? fraction : 0));
+  const [shown, setShown] = useState(reduced ? f : 0);
+  useEffect(() => {
+    if (reduced) {
+      setShown(f);
+      return;
+    }
+    const id = requestAnimationFrame(() => setShown(f));
+    return () => cancelAnimationFrame(id);
+  }, [f, reduced]);
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const half = size / 2;
+  return (
+    <div className="ring-wrap" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle
+          className="ring-track"
+          cx={half}
+          cy={half}
+          r={r}
+          strokeWidth={stroke}
+          fill="none"
+        />
+        <circle
+          className="ring-arc"
+          cx={half}
+          cy={half}
+          r={r}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - shown)}
+          transform={`rotate(-90 ${half} ${half})`}
+        />
+      </svg>
+      <div className="ring-center">{children}</div>
+    </div>
+  );
+}
+
+// The Earn headline: a live, streaming "yield earned" figure paired with a
+// radial gauge of the user's share of the pool. Both are real on-chain values —
+// the ticker just extends the last reading at the rate the chain is paying, and
+// re-syncs on every poll. Adapts to a not-yet-deposited state.
+function EarnHero({
+  earn,
+  btcUsd,
+}: {
+  earn: EarnStats;
+  btcUsd: number | null;
+}) {
+  const liveYield = useLiveYield(earn.earned, earn.deposited, earn.rateBps);
+  const active = earn.deposited > 0n;
+  const apr = Number(earn.rateBps) / 100; // bps -> %
+  const share =
+    earn.poolPrincipal > 0n
+      ? Number(earn.deposited) / Number(earn.poolPrincipal)
+      : 0;
+  // Honest per-day projection from the annual rate.
+  const perDay = (Number(earn.deposited) * (Number(earn.rateBps) / 10000)) / 365;
+  const shownYield = Math.floor(liveYield);
+  const sharePctText =
+    share > 0 && share < 0.001
+      ? "<0.1"
+      : (share * 100).toLocaleString(undefined, {
+          maximumFractionDigits: share < 0.1 ? 1 : 0,
+        });
+
+  return (
+    <section className="earn-hero">
+      <div className="eh-main">
+        <div className="eh-head">
+          <span className="eh-eyebrow">Yield earned</span>
+          {active && (
+            <span className="eh-live" title="Updating live from the pool rate">
+              <span className="eh-live-dot" /> Live
+            </span>
+          )}
+        </div>
+        <div className="eh-value">
+          <span className="eh-num">{shownYield.toLocaleString()}</span>
+          <span className="eh-unit">sats</span>
+        </div>
+        <div className="eh-meta">
+          {apr > 0 && (
+            <span className="eh-apr">{apr.toLocaleString()}% APR</span>
+          )}
+          {active ? (
+            <span className="eh-note">
+              ≈ {Math.round(perDay).toLocaleString()} sats/day
+              {btcUsd != null
+                ? ` · ${fmtUsd(BigInt(shownYield), btcUsd)} earned`
+                : ""}
+            </span>
+          ) : (
+            <span className="eh-note">Deposit sBTC below to start earning</span>
+          )}
+        </div>
+      </div>
+      <div className="eh-ring">
+        <Ring fraction={share}>
+          <span className="ring-pct">{sharePctText}%</span>
+          <span className="ring-cap">pool share</span>
+        </Ring>
+        <span className="eh-ring-sub">
+          {fmt(earn.deposited)} of {fmt(earn.poolPrincipal)} sats
+        </span>
+      </div>
+    </section>
+  );
+}
+
 function EarnView(props: {
   earn: EarnStats;
   btcUsd: number | null;
@@ -1855,15 +2139,35 @@ function EarnView(props: {
     busy,
   } = props;
 
-  // Compare the entered amount to the live on-chain balances.
+  // Deposit and withdraw are opposite actions with different ceilings — deposit
+  // is capped by your wallet balance, withdraw by your deposited principal — so
+  // one amount field feeding both buttons read as ambiguous ("how do I get my
+  // yield out?"). Split them into an explicit mode toggle, each with the right
+  // max, hint, and payout.
+  const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
+
   let amountSats = 0n;
   try {
     amountSats = BigInt(earnAmount || "0");
   } catch {
     amountSats = 0n;
   }
-  const overAvailable = amountSats > earn.available;
-  const overDeposited = amountSats > earn.deposited;
+  const max = mode === "deposit" ? earn.available : earn.deposited;
+  const over = amountSats > max;
+  // Any withdrawal harvests ALL accrued yield on top of the principal pulled,
+  // so the real payout is what you type plus everything you've earned.
+  const willReceive = amountSats + earn.earned;
+  const busyKey = mode === "deposit" ? "earn-deposit" : "earn-withdraw";
+  const actionDisabled =
+    busy === busyKey ||
+    amountSats <= 0n ||
+    over ||
+    (mode === "withdraw" && earn.deposited === 0n);
+
+  const switchMode = (m: "deposit" | "withdraw") => {
+    setMode(m);
+    setEarnAmount("");
+  };
 
   return (
     <>
@@ -1882,42 +2186,53 @@ function EarnView(props: {
         </button>
       </header>
 
+      <EarnHero earn={earn} btcUsd={btcUsd} />
+
       <div className="stat-row">
         <StatTile
           label="Deposited"
           icon={TrendingUp}
-          big
-          value={
-            <>
-              {fmt(earn.deposited)} <small>sats</small>
-            </>
-          }
-          sub="Earning in the pool"
+          countTo={Number(earn.deposited)}
+          unit="sats"
+          sub="Principal earning in the pool"
         />
         <StatTile
-          label="Yield earned"
+          label="Position value"
           icon={Coins}
-          value={
-            <>
-              {fmt(earn.earned)} <small>sats</small>
-            </>
-          }
-          sub="Grows as the pool earns"
+          countTo={Number(earn.deposited + earn.earned)}
+          unit="sats"
+          sub="Principal + earned yield"
         />
         <StatTile
           label="Available"
           icon={Wallet}
-          value={
-            <>
-              {fmt(earn.available)} <small>sats</small>
-            </>
-          }
+          countTo={Number(earn.available)}
+          unit="sats"
           sub="Ready to deposit"
         />
       </div>
 
       <div className="send-grid">
         <section className="panel send-panel">
+          <div className="earn-modes" role="tablist" aria-label="Deposit or withdraw">
+            <button
+              role="tab"
+              aria-selected={mode === "deposit"}
+              className={`earn-mode${mode === "deposit" ? " active" : ""}`}
+              onClick={() => switchMode("deposit")}
+            >
+              <ArrowDownLeft size={15} /> Deposit
+            </button>
+            <button
+              role="tab"
+              aria-selected={mode === "withdraw"}
+              className={`earn-mode${mode === "withdraw" ? " active" : ""}`}
+              onClick={() => switchMode("withdraw")}
+            >
+              <ArrowUpRight size={15} /> Withdraw
+            </button>
+          </div>
+
           <label className="field-label">Amount</label>
           <div className="text-field block">
             <input
@@ -1928,39 +2243,75 @@ function EarnView(props: {
               value={earnAmount}
               onChange={(e) => setEarnAmount(e.target.value)}
             />
+            <button
+              type="button"
+              className="field-max"
+              onClick={() => setEarnAmount(max > 0n ? max.toString() : "")}
+              disabled={max <= 0n}
+            >
+              {mode === "withdraw" ? "All" : "Max"}
+            </button>
             <span className="field-trail">sats</span>
           </div>
           {amountSats > 0n && btcUsd != null && (
             <span className="field-usd">≈ {fmtUsd(amountSats, btcUsd)}</span>
           )}
           <span className="field-hint muted">
-            Available {fmt(earn.available)} · Deposited {fmt(earn.deposited)}{" "}
-            sats
+            {mode === "deposit"
+              ? `Available to deposit ${fmt(earn.available)} sats`
+              : `Deposited principal ${fmt(earn.deposited)} sats`}
           </span>
-          {earnAmount && overAvailable && overDeposited && (
+          {earnAmount && over && (
             <span className="field-hint warn">
-              More than you can deposit or withdraw right now
+              {mode === "deposit"
+                ? "More than your available balance"
+                : "More than your deposited principal"}
             </span>
           )}
+          {mode === "withdraw" && amountSats <= 0n && earn.earned > 0n && (
+            <span className="field-hint ok">
+              Any withdrawal also claims {fmt(earn.earned)} sats of yield
+            </span>
+          )}
+          {mode === "withdraw" && amountSats > 0n && (
+            <div className="earn-receive">
+              <span className="earn-receive-label">
+                <span>You'll receive</span>
+                <small>
+                  {fmt(amountSats)} principal
+                  {earn.earned > 0n ? ` + ${fmt(earn.earned)} yield` : ""}
+                </small>
+              </span>
+              <span className="earn-receive-total">
+                {fmt(willReceive)} <small>sats</small>
+              </span>
+            </div>
+          )}
+
           <div className="earn-actions">
-            <button
-              className="btn primary"
-              onClick={onDeposit}
-              disabled={busy === "earn-deposit" || !earnAmount || overAvailable}
-            >
-              <ArrowDownLeft size={16} />
-              {busy === "earn-deposit" ? "Depositing…" : "Deposit"}
-            </button>
-            <button
-              className="btn soft"
-              onClick={onWithdraw}
-              disabled={
-                busy === "earn-withdraw" || !earnAmount || overDeposited
-              }
-            >
-              <ArrowUpRight size={16} />
-              {busy === "earn-withdraw" ? "Withdrawing…" : "Withdraw"}
-            </button>
+            {mode === "deposit" ? (
+              <button
+                className="btn primary"
+                onClick={onDeposit}
+                disabled={actionDisabled}
+              >
+                <ArrowDownLeft size={16} />
+                {busy === "earn-deposit" ? "Depositing…" : "Deposit"}
+              </button>
+            ) : (
+              <button
+                className="btn primary"
+                onClick={onWithdraw}
+                disabled={actionDisabled}
+              >
+                <ArrowUpRight size={16} />
+                {busy === "earn-withdraw"
+                  ? "Withdrawing…"
+                  : earn.earned > 0n
+                    ? "Withdraw + claim yield"
+                    : "Withdraw"}
+              </button>
+            )}
           </div>
         </section>
 
@@ -2025,27 +2376,32 @@ function GasView(props: {
           label="Pool balance"
           icon={Fuel}
           big
-          value={
-            <>
-              {fmtStx(sponsor.poolBalance)} <small>STX</small>
-            </>
+          countTo={Number(sponsor.poolBalance) / 1_000_000}
+          countFormat={(n) =>
+            n.toLocaleString(undefined, { maximumFractionDigits: 6 })
           }
+          unit="STX"
           sub="Available to cover fees"
         />
         <StatTile
           label="Your allowance"
           icon={Zap}
-          value={
-            <>
-              {fmtStx(sponsor.remaining)} <small>STX</small>
-            </>
+          countTo={Number(sponsor.remaining) / 1_000_000}
+          countFormat={(n) =>
+            n.toLocaleString(undefined, { maximumFractionDigits: 6 })
           }
+          unit="STX"
           sub="Left in this window"
+          gauge={
+            sponsor.cap > 0n
+              ? Number(sponsor.remaining) / Number(sponsor.cap)
+              : undefined
+          }
         />
         <StatTile
           label="Sponsored"
           icon={Hash}
-          value={String(sponsor.sponsoredCount)}
+          countTo={Number(sponsor.sponsoredCount)}
           sub="Txs covered for you"
         />
       </div>
@@ -2311,6 +2667,52 @@ const shellStyles = `
 .send-panel .btn.full{margin-top:22px;}
 .earn-actions{display:flex;gap:10px;margin-top:22px;}
 .earn-actions .btn{flex:1;}
+.earn-modes{display:flex;gap:4px;padding:4px;background:var(--paper);border:1px solid var(--line);border-radius:12px;margin-bottom:18px;}
+.earn-mode{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;background:transparent;color:var(--text-muted);padding:10px 16px;border-radius:9px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s,box-shadow .15s;}
+.earn-mode:hover{color:var(--ink);}
+.earn-mode.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
+.earn-mode.active svg{color:var(--orange);}
+.field-max{flex-shrink:0;border:1px solid var(--line);background:var(--white);color:var(--ink);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:5px 9px;border-radius:7px;cursor:pointer;font-family:var(--sans);transition:background .14s,border-color .14s;}
+.field-max:hover:not(:disabled){background:#ecebe5;border-color:#d7d3c9;}
+.field-max:disabled{opacity:.4;cursor:not-allowed;}
+.earn-receive{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:14px 16px;background:#fafaf8;border:1px solid var(--line);border-radius:12px;}
+.earn-receive-label{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.earn-receive-label span{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.earn-receive-label small{font-size:12.5px;color:var(--text-muted);}
+.earn-receive-total{font-size:20px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;}
+.earn-receive-total small{font-size:12px;color:var(--text-muted);font-weight:600;}
+
+/* Earn hero — live yield figure + pool-share ring */
+.earn-hero{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;background:var(--white);border:1px solid var(--line);border-radius:18px;padding:22px 26px;margin-bottom:16px;position:relative;overflow:hidden;}
+.earn-hero::before{content:"";position:absolute;top:-45%;right:-8%;width:320px;height:320px;background:radial-gradient(circle,#f15a2412,transparent 62%);pointer-events:none;}
+.eh-main{min-width:0;position:relative;z-index:1;}
+.eh-head{display:flex;align-items:center;gap:10px;}
+.eh-eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.eh-live{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#2f7d54;background:#eef6f1;padding:3px 8px;border-radius:999px;}
+.eh-live-dot{width:6px;height:6px;border-radius:50%;background:#2f9c63;}
+.eh-value{display:flex;align-items:baseline;gap:8px;margin:10px 0 2px;}
+.eh-num{font-size:44px;font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums;}
+.eh-unit{font-size:16px;color:var(--text-muted);font-weight:600;}
+.eh-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;}
+.eh-apr{display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:var(--orange);background:#f15a2414;border:1px solid #f15a2433;padding:3px 9px;border-radius:999px;white-space:nowrap;}
+.eh-note{font-size:13px;color:var(--text-muted);}
+.eh-ring{display:flex;flex-direction:column;align-items:center;gap:9px;position:relative;z-index:1;}
+.eh-ring-sub{font-size:11.5px;color:var(--text-muted);font-variant-numeric:tabular-nums;}
+
+/* Radial gauge — the wrapper class is ring-wrap, not ring, because a bare
+   .ring collides with Tailwind's ring utility (a 1px currentColor box-shadow)
+   present in this build, which drew a black square around the donut. */
+.ring-wrap{position:relative;display:grid;place-items:center;}
+.ring-track{stroke:var(--line);}
+.ring-arc{stroke:var(--orange);transition:stroke-dashoffset 1.1s var(--ease);}
+.ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
+.ring-pct{font-size:23px;font-weight:800;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;}
+.ring-cap{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+@media(max-width:560px){
+  .earn-hero{grid-template-columns:1fr;justify-items:start;gap:18px;}
+  .eh-num{font-size:38px;}
+  .eh-ring{align-self:center;width:100%;}
+}
 
 /* Empty state */
 .empty-panel{text-align:center;padding:48px 32px;}
@@ -2329,6 +2731,8 @@ const shellStyles = `
 .stat-value small{font-size:13px;font-weight:600;color:var(--text-muted);}
 .stat-tile.big .stat-value{font-size:30px;}
 .stat-sub{font-size:12px;color:var(--text-muted);}
+.stat-gauge{margin-top:11px;height:5px;border-radius:999px;background:var(--paper);overflow:hidden;}
+.stat-gauge-fill{display:block;height:100%;border-radius:999px;background:var(--orange);transition:width 1s var(--ease);}
 
 /* Overview grid */
 .ov-grid{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;align-items:start;}
@@ -2420,6 +2824,8 @@ const shellStyles = `
 .view>*:nth-child(2){animation-delay:.07s;}
 .view>*:nth-child(3){animation-delay:.14s;}
 .view>*:nth-child(4){animation-delay:.21s;}
+.view>*:nth-child(5){animation-delay:.28s;}
+.view>*:nth-child(6){animation-delay:.35s;}
 
 /* Transaction rows drift in on load */
 .tx-list .tx-row{animation:fade-up .45s var(--ease) both;}
