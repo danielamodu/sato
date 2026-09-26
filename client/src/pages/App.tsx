@@ -195,6 +195,8 @@ function SatoApp() {
     earned: 0n,
     available: 0n,
     poolTotal: 0n,
+    poolPrincipal: 0n,
+    rateBps: 0n,
   });
   const [earnAmount, setEarnAmount] = useState("");
   const [sponsor, setSponsor] = useState<SponsorStats>({
@@ -246,7 +248,14 @@ function SatoApp() {
       setBalance(0n);
       setTxs([]);
       setEvents([]);
-      setEarn({ deposited: 0n, earned: 0n, available: 0n, poolTotal: 0n });
+      setEarn({
+        deposited: 0n,
+        earned: 0n,
+        available: 0n,
+        poolTotal: 0n,
+        poolPrincipal: 0n,
+        rateBps: 0n,
+      });
       setSponsor({
         poolBalance: 0n,
         remaining: 0n,
@@ -275,6 +284,30 @@ function SatoApp() {
       clearInterval(id);
     };
   }, []);
+
+  // While the Earn tab is open, re-read the pool position on a short interval
+  // so the live-yield ticker re-syncs to the chain and the pool figures stay
+  // current. Yield on sato-yield-v2 accrues every block, so this keeps the
+  // numbers honestly moving without a full page refresh.
+  useEffect(() => {
+    if (view !== "earn" || !address) return;
+    let alive = true;
+    const id = setInterval(() => {
+      getEarnStats(address)
+        .then((e) => {
+          // The public testnet node rate-limits; getEarnStats degrades failed
+          // reads to 0n. yield-rate-bps is a nonzero contract constant, so
+          // rateBps===0 means this poll partially failed — skip it rather than
+          // flash the live figures to zero and snap back on the next tick.
+          if (alive && e.rateBps > 0n) setEarn(e);
+        })
+        .catch(() => {});
+    }, 12_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [view, address]);
 
   // Honor a payment link (?to=@name|address&amount=sats): prefill the Send
   // form and jump to it, so a shared Sato link lands the payer on a ready-to-

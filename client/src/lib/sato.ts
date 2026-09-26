@@ -378,13 +378,20 @@ export function fundSelf(amount: bigint) {
 
 // --- earn (sato-yield pool) ---------------------------------------------
 
-// A user's position in the yield pool, plus pool context. All sats.
+// A user's position in the yield pool, plus pool context. All sats except
+// rateBps (basis points of annual yield).
 export interface EarnStats {
   deposited: bigint; // principal the user has earning in the pool
   earned: bigint; // yield accrued to the user (harvested + pending)
   available: bigint; // the user's sBTC wallet balance, ready to deposit
   poolTotal: bigint; // total sBTC the pool holds (principal + yield)
+  poolPrincipal: bigint; // total principal across all depositors (for pool share)
+  rateBps: bigint; // annual yield rate in basis points (10000 bps = 100% APR)
 }
+
+// Blocks the contract annualizes its rate over (mirrors BLOCKS_PER_YEAR in
+// sato-yield-v2). Lets the client project accrual between on-chain reads.
+export const YIELD_BLOCKS_PER_YEAR = 52560;
 
 // Read a user's full Earn position in one shot (four parallel reads). v2 has
 // no internal "available" ledger — deposits pull straight from the user's
@@ -403,13 +410,16 @@ export async function getEarnStats(who: string): Promise<EarnStats> {
       return 0n;
     }
   };
-  const [deposited, earned, available, poolTotal] = await Promise.all([
-    readUint(CONTRACTS.earn, "get-balance", [Cl.principal(who)]),
-    readUint(CONTRACTS.earn, "get-yield", [Cl.principal(who)]),
-    readUint(CONTRACTS.transfer, "get-balance", [Cl.principal(who)]),
-    readUint(CONTRACTS.earn, "get-pool-total", []),
-  ]);
-  return { deposited, earned, available, poolTotal };
+  const [deposited, earned, available, poolTotal, poolPrincipal, rateBps] =
+    await Promise.all([
+      readUint(CONTRACTS.earn, "get-balance", [Cl.principal(who)]),
+      readUint(CONTRACTS.earn, "get-yield", [Cl.principal(who)]),
+      readUint(CONTRACTS.transfer, "get-balance", [Cl.principal(who)]),
+      readUint(CONTRACTS.earn, "get-pool-total", []),
+      readUint(CONTRACTS.earn, "get-pool-principal", []),
+      readUint(CONTRACTS.earn, "get-yield-rate", []),
+    ]);
+  return { deposited, earned, available, poolTotal, poolPrincipal, rateBps };
 }
 
 // Deposit sBTC (from the pool ledger) into the yield pool to start earning.
