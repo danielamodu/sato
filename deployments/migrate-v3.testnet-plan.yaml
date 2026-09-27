@@ -1,0 +1,19 @@
+id: 0
+name: Migrate legacy balances into sato-yield-v3
+network: testnet
+stacks-node: https://api.testnet.hiro.so
+bitcoin-node: http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332
+plan:
+  batches:
+  - id: 0
+    transactions:
+    - transaction-type: contract-call
+      contract-id: ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV.sato-yield-v3
+      method: mint
+      parameters:
+        - "'ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV"
+        - u25739041
+      expected-sender: ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV
+      cost: 100000
+      anchor-block-only: false
+    epoch: '3.4'
