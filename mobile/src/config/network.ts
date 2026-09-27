@@ -8,8 +8,9 @@ export type ContractRef = { address: string; name: string };
 
 export const CONTRACTS = {
   names: { address: DEPLOYER, name: "sato-names" },
-  transfer: { address: DEPLOYER, name: "sato-transfer" },
-  earn: { address: DEPLOYER, name: "sato-yield-v2" },
+  // The yield-bearing ledger. It IS the wallet: balances live here, and simply
+  // holding sBTC earns the base rate. Supersedes sato-transfer + sato-yield-v2.
+  ledger: { address: DEPLOYER, name: "sato-yield-v3" },
   sponsor: { address: DEPLOYER, name: "sato-sponsor" },
 } as const satisfies Record<string, ContractRef>;
 

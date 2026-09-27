@@ -53,15 +53,15 @@ export default function Overview() {
 
       <View style={{ flexDirection: "row", gap: S.sm }}>
         <StatTile
-          label="In Earn"
-          value={`${fmtBtc(w.earn.deposited)} BTC`}
-          sub={w.prices.btc != null ? fmtUsd(w.earn.deposited, w.prices.btc) : undefined}
+          label="Locked"
+          value={`${fmtBtc(w.earn.lockValue)} BTC`}
+          accent={w.earn.locked > 0n}
+          sub={w.prices.btc != null ? fmtUsd(w.earn.lockValue, w.prices.btc) : undefined}
         />
         <StatTile
-          label="Yield earned"
-          value={`${fmtBtc(w.earn.earned)} BTC`}
-          accent={w.earn.earned > 0n}
-          sub={w.prices.btc != null ? fmtUsd(w.earn.earned, w.prices.btc) : undefined}
+          label="Total value"
+          value={`${fmtBtc(w.balance + w.earn.lockValue)} BTC`}
+          sub={w.prices.btc != null ? fmtUsd(w.balance + w.earn.lockValue, w.prices.btc) : undefined}
         />
       </View>
 

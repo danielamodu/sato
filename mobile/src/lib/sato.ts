@@ -72,34 +72,87 @@ export async function isNameAvailable(name: string): Promise<boolean> {
   );
 }
 
+// Get a principal's live sBTC balance (in sats) from the yield-bearing ledger.
+// This is settled balance + pending base yield, so it ticks up every block.
 export async function getBalance(who: string): Promise<bigint> {
   return toBigInt(
-    cvToValue(await readOnly(CONTRACTS.transfer, "get-balance", [Cl.principal(who)], who)),
+    cvToValue(await readOnly(CONTRACTS.ledger, "get-balance", [Cl.principal(who)], who)),
   );
 }
 
+// The user's earning picture on the v3 ledger. There is no separate pool: the
+// liquid balance auto-earns the base rate, and an optional lock moves sats into
+// the higher boost rate for a fixed term. All fields are sats except the
+// *RateBps fields (basis points of annual yield; 10000 bps = 100% APR).
 export interface EarnStats {
-  deposited: bigint; // principal in the yield pool
-  earned: bigint; // accrued yield, withdrawable
-  available: bigint; // spendable wallet balance (what you could deposit)
-  poolTotal: bigint; // whole-pool size, for context
+  liquid: bigint; // spendable balance, auto-earning the base rate (live)
+  locked: bigint; // principal currently committed to the lock (boost) tier
+  lockValue: bigint; // locked principal + accrued boost yield, live
+  lockUnlock: bigint; // block height the lock matures (0 = no active lock)
+  height: bigint; // current chain tip, to count blocks until maturity
+  baseRateBps: bigint; // liquid (auto) rate in basis points
+  boostRateBps: bigint; // locked (boost) rate in basis points
+  totalSupply: bigint; // total liquid sBTC across all holders (context)
 }
 
+// Blocks the contract annualizes its rate over (mirrors BLOCKS_PER_YEAR in
+// sato-yield-v3). Lets the client project accrual between on-chain reads.
+export const YIELD_BLOCKS_PER_YEAR = 52560;
+
+// Read a user's full earning picture in one shot. Every read degrades to 0n if
+// the ledger isn't reachable, so the Earn tab still renders instead of throwing.
+// `get-lock` returns a {amount,height,unlock} tuple; we pull principal + unlock
+// from it. The chain tip (best-effort, from /v2/info) drives time-to-unlock.
 export async function getEarnStats(who: string): Promise<EarnStats> {
-  const readUint = async (c: ContractRef, fn: string, args: ClarityValue[]) => {
+  const readUint = async (fn: string, args: ClarityValue[]): Promise<bigint> => {
     try {
-      return toBigInt(cvToValue(await readOnly(c, fn, args, who)));
+      return toBigInt(cvToValue(await readOnly(CONTRACTS.ledger, fn, args, who)));
     } catch {
       return 0n;
     }
   };
-  const [deposited, earned, available, poolTotal] = await Promise.all([
-    readUint(CONTRACTS.earn, "get-balance", [Cl.principal(who)]),
-    readUint(CONTRACTS.earn, "get-yield", [Cl.principal(who)]),
-    readUint(CONTRACTS.transfer, "get-balance", [Cl.principal(who)]),
-    readUint(CONTRACTS.earn, "get-pool-total", []),
-  ]);
-  return { deposited, earned, available, poolTotal };
+  // cvToValue may hand tuple fields back bare or wrapped as {type,value}; unwrap
+  // one level before coercing so we read the same on both shapes.
+  const field = (t: unknown, k: string): bigint => {
+    const f = (t as Record<string, unknown>)?.[k];
+    return toBigInt(f && typeof f === "object" && "value" in f ? (f as { value: unknown }).value : f);
+  };
+  const readLock = async (): Promise<{ amount: bigint; unlock: bigint }> => {
+    try {
+      const t = cvToValue(await readOnly(CONTRACTS.ledger, "get-lock", [Cl.principal(who)], who));
+      return { amount: field(t, "amount"), unlock: field(t, "unlock") };
+    } catch {
+      return { amount: 0n, unlock: 0n };
+    }
+  };
+  const chainHeight = async (): Promise<bigint> => {
+    try {
+      const r = await fetch(`${API}/v2/info`);
+      return r.ok ? toBigInt((await r.json())?.stacks_tip_height) : 0n;
+    } catch {
+      return 0n;
+    }
+  };
+  const [liquid, lockValue, baseRateBps, boostRateBps, totalSupply, lock, height] =
+    await Promise.all([
+      readUint("get-balance", [Cl.principal(who)]),
+      readUint("get-lock-value", [Cl.principal(who)]),
+      readUint("get-base-rate", []),
+      readUint("get-boost-rate", []),
+      readUint("get-total-supply", []),
+      readLock(),
+      chainHeight(),
+    ]);
+  return {
+    liquid,
+    locked: lock.amount,
+    lockValue,
+    lockUnlock: lock.unlock,
+    height,
+    baseRateBps,
+    boostRateBps,
+    totalSupply,
+  };
 }
 
 export interface SponsorStats {
@@ -142,6 +195,11 @@ function classify(
   fn: string | undefined,
   contract: string,
 ): { label: string; kind: SatoTx["kind"] } {
+  if (contract === "sato-yield-v3") {
+    if (fn === "lock") return { label: "Locked for boost", kind: "earn" };
+    if (fn === "claim-lock") return { label: "Claimed lock", kind: "earn" };
+    // send / deposit fall through to the shared labels below.
+  }
   if (contract === "sato-yield" || contract === "sato-yield-v2") {
     if (fn === "deposit") return { label: "Deposited to Earn", kind: "earn" };
     if (fn === "withdraw") return { label: "Withdrew from Earn", kind: "earn" };
@@ -194,7 +252,7 @@ export async function getRecentTransactions(who: string, limit = 25): Promise<Sa
   }
 }
 
-// A single balance-changing event, mined from sato-transfer's print logs. Feeds
+// A single balance-changing event, mined from the ledger's print logs. Feeds
 // the interactive balance staircase on the dashboard.
 export interface BalanceEvent {
   time: number;
@@ -209,7 +267,7 @@ export async function getBalanceHistory(
   limit = 50,
 ): Promise<{ events: BalanceEvent[]; complete: boolean }> {
   try {
-    const contract = `${CONTRACTS.transfer.address}.${CONTRACTS.transfer.name}`;
+    const contract = `${CONTRACTS.ledger.address}.${CONTRACTS.ledger.name}`;
     const res = await fetch(`${API}/extended/v1/contract/${contract}/events?limit=${limit}`);
     if (!res.ok) return { events: [], complete: false };
     const data = await res.json();
@@ -264,9 +322,10 @@ export async function getBalanceHistory(
 
 // --- writes (all gasless — signed on-device, fee paid by the co-signer) ---
 
-// Testnet faucet: mint test sBTC straight into this wallet. Testnet-only.
+// Testnet faucet: credit the caller's own ledger balance with test sBTC — and
+// that balance immediately starts earning the base rate. Testnet-only.
 export function fundSelf(amount: bigint) {
-  return signSponsored(CONTRACTS.transfer, "deposit", [Cl.uint(amount)]);
+  return signSponsored(CONTRACTS.ledger, "deposit", [Cl.uint(amount)]);
 }
 
 // Send sBTC to a principal or an @username (resolved on-chain first).
@@ -274,19 +333,31 @@ export async function send(recipientOrName: string, amount: bigint) {
   const raw = recipientOrName.trim().replace(/^@/, "");
   const recipient = raw.startsWith("S") ? raw : await resolveName(raw);
   if (!recipient) throw new Error("That @username isn't registered.");
-  return signSponsored(CONTRACTS.transfer, "send", [Cl.principal(recipient), Cl.uint(amount)]);
+  return signSponsored(CONTRACTS.ledger, "send", [Cl.principal(recipient), Cl.uint(amount)]);
 }
 
 export function registerName(name: string) {
   return signSponsored(CONTRACTS.names, "register-name", [Cl.stringAscii(name)]);
 }
 
-export function earnDeposit(amount: bigint) {
-  return signSponsored(CONTRACTS.earn, "deposit", [Cl.uint(amount)]);
+// Lock sats from the liquid balance into the boost tier for `termBlocks`. The
+// locked sats leave the liquid balance (they stop earning the base rate and
+// start earning the higher boost rate) until the term elapses. One lock at a
+// time — claim the current one before opening another.
+export function earnLock(amount: bigint, termBlocks: bigint) {
+  return signSponsored(CONTRACTS.ledger, "lock", [Cl.uint(amount), Cl.uint(termBlocks)]);
 }
 
-export function earnWithdraw(amount: bigint) {
-  return signSponsored(CONTRACTS.earn, "withdraw", [Cl.uint(amount)]);
+// Claim a matured lock: returns the locked principal + accrued boost yield to
+// the liquid balance. Reverts on-chain until the unlock height.
+export function earnClaim() {
+  return signSponsored(CONTRACTS.ledger, "claim-lock", []);
+}
+
+// Testnet helper: credit the caller's ledger balance (the faucet) so they have
+// sBTC to lock. Same call as fundSelf; kept distinct for the Earn-tab toast.
+export function fundEarn(amount: bigint) {
+  return signSponsored(CONTRACTS.ledger, "deposit", [Cl.uint(amount)]);
 }
 
 // Contribute µSTX to the shared gas pool. The co-signer still covers the FEE,

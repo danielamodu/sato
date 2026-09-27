@@ -33,7 +33,8 @@ We chose (3). The tradeoff is real self-custody on-device (see **Security**).
     on-chain name resolution, over-balance guard, gasless
   - **Receive** — QR + shareable pay link, copy address/link, gasless
     `@username` claim with live availability
-  - **Earn** — deposit / withdraw against `sato-yield-v2`, live yield, gasless
+  - **Earn** — your balance auto-earns the base rate on `sato-yield-v3`; lock
+    sats into the boost tier for a fixed term, then claim principal + yield; gasless
   - **Gas** — real sponsor-pool reads + STX top-up (the one STX-requiring action)
   - **Activity** — full on-chain history, tap to open on the explorer
   - **Account** (modal) — address, reveal recovery phrase behind a biometric
@@ -84,9 +85,10 @@ npm run spike
 Writes are sponsored: the app signs a `sponsored:true` call and POSTs the
 serialized tx to the web app's `api/sponsor.ts`, which pays the fee and
 broadcasts. For the mobile flows to work, that co-signer must be **deployed with
-the updated allow-list** — this scaffold added `sato-transfer.deposit` (the
-testnet faucet, so a zero-STX wallet can onboard) and switched `sato-yield` →
-`sato-yield-v2`. Deploy the web app before pointing a device at it, or every
+the updated allow-list** — the app's ledger is `sato-yield-v3`, so the co-signer
+must allow-list `sato-yield-v3` for `send` / `deposit` (the testnet faucet, so a
+zero-STX wallet can onboard) / `lock` / `claim-lock`. Deploy the web app before
+pointing a device at it, or every
 write returns "Gas sponsor rejected the transaction." The co-signer stays bounded
 by its fixed fee + per-principal rate limit; `SPONSOR_KEY` is a server-only env.
 

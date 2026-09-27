@@ -22,7 +22,10 @@ import {
 import { explorerTx, fetchPrices } from "@/lib/format";
 import { C, R, S } from "@/theme";
 
-const EMPTY_EARN: EarnStats = { deposited: 0n, earned: 0n, available: 0n, poolTotal: 0n };
+const EMPTY_EARN: EarnStats = {
+  liquid: 0n, locked: 0n, lockValue: 0n, lockUnlock: 0n,
+  height: 0n, baseRateBps: 0n, boostRateBps: 0n, totalSupply: 0n,
+};
 const EMPTY_SPONSOR: SponsorStats = {
   poolBalance: 0n, remaining: 0n, cap: 0n, sponsoredCount: 0n, windowLength: 0n,
 };
