@@ -31,6 +31,12 @@ export const CONTRACTS = {
   sponsor: { address: DEPLOYER, name: "sato-sponsor" },
 } as const;
 
+// Where "Pay bills" payments land. A bill is a normal ledger `send` of sBTC to
+// this principal; api/pay.ts then verifies that payment on-chain and fulfills
+// the bill via VTPass. Keep in step with the server's SATO_TREASURY_ADDRESS
+// (defaults to the deployer for the demo).
+export const TREASURY = DEPLOYER;
+
 const API = "https://api.testnet.hiro.so";
 
 // --- reads (no wallet) ---------------------------------------------------

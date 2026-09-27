@@ -31,3 +31,10 @@ export const SPONSOR_ENDPOINT =
 // EXPO_PUBLIC_SPONSOR_ENDPOINT is enough to get a working build.
 export const WEB_APP =
   process.env.EXPO_PUBLIC_WEB_APP ?? SPONSOR_ENDPOINT.replace(/\/api\/sponsor\/?$/, "");
+
+// The "Pay bills" backend (api/pay.ts) lives on the web app's origin as well:
+// it prices a naira bill in sats, then — once it has verified the on-chain sBTC
+// payment to the treasury — fulfills it via VTPass. Defaults to `${WEB_APP}/api/pay`
+// so a single EXPO_PUBLIC_SPONSOR_ENDPOINT wires up both gasless sends and bills;
+// override independently with EXPO_PUBLIC_PAY_ENDPOINT.
+export const PAY_ENDPOINT = process.env.EXPO_PUBLIC_PAY_ENDPOINT ?? `${WEB_APP}/api/pay`;

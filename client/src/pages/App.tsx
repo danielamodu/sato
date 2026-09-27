@@ -35,6 +35,7 @@ import {
   Zap,
   QrCode,
   Download,
+  Smartphone,
 } from "lucide-react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -63,6 +64,12 @@ import {
   type EarnStats,
   type SponsorStats,
 } from "@/lib/sato";
+import {
+  quoteAirtime,
+  payAirtime,
+  type Network,
+  type BillQuote,
+} from "@/lib/bills";
 
 const short = (a: string) => `${a.slice(0, 5)}…${a.slice(-4)}`;
 
@@ -174,7 +181,7 @@ function txidOf(res: any): string | undefined {
   return res?.txid ?? res?.txId ?? res?.result?.txid;
 }
 
-type View = "overview" | "send" | "receive" | "earn" | "gas" | "activity";
+type View = "overview" | "send" | "receive" | "bills" | "earn" | "gas" | "activity";
 
 function SatoApp() {
   const { address, isConnecting, connectWallet, disconnectWallet } = useStacks();
@@ -218,6 +225,15 @@ function SatoApp() {
   const [btcUsd, setBtcUsd] = useState<number | null>(null);
   const [stxUsd, setStxUsd] = useState<number | null>(null);
   const [events, setEvents] = useState<BalanceEvent[]>([]);
+
+  // Pay bills (airtime): network + phone + naira amount, priced by a live
+  // server-signed quote. billStage narrates the multi-step pay→confirm flow.
+  const [billNet, setBillNet] = useState<Network>("mtn");
+  const [billPhone, setBillPhone] = useState("");
+  const [billNgn, setBillNgn] = useState("");
+  const [billQuote, setBillQuote] = useState<BillQuote | null>(null);
+  const [billQuoting, setBillQuoting] = useState(false);
+  const [billStage, setBillStage] = useState<string | null>(null);
 
   // Refresh the connected user's name + balance + earn position, then activity.
   const refresh = async (addr: string) => {
@@ -290,6 +306,31 @@ function SatoApp() {
       clearInterval(id);
     };
   }, []);
+
+  // Debounced live quote for the Pay bills tab: whenever the network or naira
+  // amount changes, ask the server for a fresh signed quote (sats + rate). An
+  // out-of-range or empty amount clears it; a failed fetch (e.g. no /api/pay in
+  // plain `vite dev`) just leaves no quote, disabling Pay rather than erroring.
+  useEffect(() => {
+    const ngn = Math.floor(Number(billNgn));
+    if (!Number.isFinite(ngn) || ngn <= 0) {
+      setBillQuote(null);
+      setBillQuoting(false);
+      return;
+    }
+    setBillQuoting(true);
+    let alive = true;
+    const id = setTimeout(() => {
+      quoteAirtime(billNet, ngn)
+        .then((q) => alive && setBillQuote(q))
+        .catch(() => alive && setBillQuote(null))
+        .finally(() => alive && setBillQuoting(false));
+    }, 450);
+    return () => {
+      alive = false;
+      clearTimeout(id);
+    };
+  }, [billNet, billNgn]);
 
   // While the Earn tab is open, re-read the ledger position on a short interval
   // so the live-yield ticker re-syncs to the chain and the figures stay current.
@@ -555,6 +596,40 @@ function SatoApp() {
     }
   };
 
+  // Pay an airtime bill: sends the quoted sats to the treasury (gaslessly, with
+  // a user-pays fallback), then polls the server until the payment confirms and
+  // VTPass fulfills. billStage narrates each step under the button.
+  const onPayBill = async () => {
+    const phone = billPhone.trim();
+    if (!billQuote || !/^(0\d{10}|234\d{10})$/.test(phone)) return;
+    setBusy("bill");
+    try {
+      const r = await payAirtime(billQuote, phone, (stage) =>
+        setBillStage(stage === "paying" ? "Approve the payment…" : "Confirming on-chain…")
+      );
+      const label = `₦${billQuote.amountNgn.toLocaleString()} ${billNet.toUpperCase()} airtime`;
+      if (r.status === "delivered")
+        toast.success(`${label} delivered`, { description: `to ${phone}` });
+      else if (r.status === "processing")
+        toast.success(`${label} is on its way`, { description: "The network will deliver shortly." });
+      else if (r.status === "pending")
+        toast.message("Payment still confirming", {
+          description: r.detail || "Airtime will land once it's mined.",
+        });
+      else toast.error("Couldn't complete this bill", { description: r.error || r.detail });
+      if (r.status === "delivered" || r.status === "processing") {
+        setBillNgn("");
+        setBillQuote(null);
+      }
+      if (address) setTimeout(() => refresh(address), 4000);
+    } catch (e: any) {
+      toast.error("Payment cancelled", { description: e?.message });
+    } finally {
+      setBusy(null);
+      setBillStage(null);
+    }
+  };
+
   // --- disconnected: split sign-in, warm brand panel echoing the app ----
   if (!address) {
     return (
@@ -641,6 +716,7 @@ function SatoApp() {
     { id: "overview", label: "Overview", icon: LayoutGrid },
     { id: "send", label: "Send", icon: Send },
     { id: "receive", label: "Receive", icon: QrCode },
+    { id: "bills", label: "Pay bills", icon: Smartphone },
     { id: "earn", label: "Earn", icon: TrendingUp },
     { id: "gas", label: "Gas", icon: Fuel },
     { id: "activity", label: "Activity", icon: Receipt },
@@ -763,6 +839,24 @@ function SatoApp() {
             address={address}
             myName={myName}
             goClaim={() => setView("overview")}
+          />
+        )}
+
+        {view === "bills" && (
+          <BillsView
+            net={billNet}
+            setNet={setBillNet}
+            phone={billPhone}
+            setPhone={setBillPhone}
+            ngn={billNgn}
+            setNgn={setBillNgn}
+            quote={billQuote}
+            quoting={billQuoting}
+            balance={balance}
+            btcUsd={btcUsd}
+            stage={billStage}
+            onPay={onPayBill}
+            busy={busy}
           />
         )}
 
@@ -2367,6 +2461,179 @@ function EarnView(props: {
             <span>Total in Sato</span>
             <strong>
               {fmt(earn.totalSupply)} <small>sats</small>
+            </strong>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+// --- Pay bills view (sBTC -> airtime via VTPass) -------------------------
+const NETWORKS: { id: Network; label: string }[] = [
+  { id: "mtn", label: "MTN" },
+  { id: "glo", label: "Glo" },
+  { id: "airtel", label: "Airtel" },
+  { id: "9mobile", label: "9mobile" },
+];
+const NGN_CHIPS = ["100", "200", "500", "1000", "2000"];
+
+function BillsView(props: {
+  net: Network;
+  setNet: (n: Network) => void;
+  phone: string;
+  setPhone: (v: string) => void;
+  ngn: string;
+  setNgn: (v: string) => void;
+  quote: BillQuote | null;
+  quoting: boolean;
+  balance: bigint;
+  btcUsd: number | null;
+  stage: string | null;
+  onPay: () => void;
+  busy: string | null;
+}) {
+  const { net, setNet, phone, setPhone, ngn, setNgn, quote, quoting, balance, btcUsd, stage, onPay, busy } = props;
+  const phoneOk = /^(0\d{10}|234\d{10})$/.test(phone.trim());
+  const sats = quote ? BigInt(quote.sats) : 0n;
+  const over = sats > balance;
+  const running = busy === "bill";
+  const payDisabled = running || !quote || !phoneOk || over || quoting;
+
+  return (
+    <>
+      <header className="page-head">
+        <div>
+          <h1>Pay bills</h1>
+          <p>Turn sBTC into airtime — priced live, delivered in seconds.</p>
+        </div>
+      </header>
+
+      <div className="send-grid">
+        <section className="panel send-panel">
+          <label className="field-label">Network</label>
+          <div className="term-presets" role="group" aria-label="Mobile network">
+            {NETWORKS.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                className={`term-preset${net === n.id ? " active" : ""}`}
+                onClick={() => setNet(n.id)}
+              >
+                {n.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="field-label">Phone number</label>
+          <div className="text-field block">
+            <Smartphone size={16} className="field-lead" />
+            <input
+              className="field-input"
+              type="tel"
+              inputMode="tel"
+              placeholder="0803 000 0000"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          </div>
+          {phone.trim() && !phoneOk && (
+            <span className="field-hint miss">Enter a valid 11-digit number</span>
+          )}
+
+          <label className="field-label">Amount</label>
+          <div className="text-field block">
+            <span className="field-at">₦</span>
+            <input
+              className="field-input"
+              type="number"
+              min="50"
+              placeholder="500"
+              value={ngn}
+              onChange={(e) => setNgn(e.target.value)}
+            />
+            <span className="field-trail">NGN</span>
+          </div>
+          <div className="term-presets" style={{ marginTop: 8 }} role="group" aria-label="Quick amounts">
+            {NGN_CHIPS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`term-preset${ngn === c ? " active" : ""}`}
+                onClick={() => setNgn(c)}
+              >
+                ₦{Number(c).toLocaleString()}
+              </button>
+            ))}
+          </div>
+          {quote ? (
+            <>
+              <span className="field-usd">
+                ≈ {fmt(sats)} sats
+                {btcUsd != null ? ` · ${fmtUsd(sats, btcUsd)}` : ""}
+              </span>
+              <span className={`field-hint ${over ? "miss" : "muted"}`}>
+                {over
+                  ? `Costs more than your balance of ${fmt(balance)} sats`
+                  : `Rate ₦${Math.round(quote.rate).toLocaleString()}/BTC · balance ${fmt(balance)} sats`}
+              </span>
+            </>
+          ) : (
+            <span className="field-hint muted">
+              {quoting
+                ? "Pricing at the live rate…"
+                : Number(ngn) > 0
+                  ? "Couldn't price this — try again in a moment"
+                  : "Enter an amount to see the sBTC price"}
+            </span>
+          )}
+
+          <button className="btn primary full" onClick={onPay} disabled={payDisabled}>
+            <Smartphone size={16} />
+            {running
+              ? stage || "Paying…"
+              : quote
+                ? `Pay ₦${quote.amountNgn.toLocaleString()} airtime`
+                : "Pay airtime"}
+          </button>
+          <span className="field-hint muted" style={{ marginTop: 10 }}>
+            {running ? (
+              <>
+                <RefreshCw size={13} className="spin" /> {stage || "Working…"}
+              </>
+            ) : (
+              <>
+                <Zap size={13} /> Gas covered by the Sato pool — you just approve
+                the payment.
+              </>
+            )}
+          </span>
+        </section>
+
+        <aside className="panel send-aside">
+          <span className="panel-eyebrow">How Pay bills works</span>
+          <ul className="tips">
+            <li>
+              <span className="tip-dot" /> Buy airtime for <b>any Nigerian
+              number</b>, straight from your sBTC.
+            </li>
+            <li>
+              <span className="tip-dot" /> Priced live at the <b>BTC/NGN
+              rate</b> — you approve the exact sats.
+            </li>
+            <li>
+              <span className="tip-dot" /> Delivered by <b>VTPass</b> the moment
+              your payment confirms on-chain.
+            </li>
+            <li>
+              <span className="tip-dot" /> Data, electricity and cable are{" "}
+              <b>coming to the same flow</b>.
+            </li>
+          </ul>
+          <div className="aside-balance">
+            <span>Available</span>
+            <strong>
+              {fmt(balance)} <small>sats</small>
             </strong>
           </div>
         </aside>

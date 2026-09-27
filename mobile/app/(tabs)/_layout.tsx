@@ -17,6 +17,7 @@ const TABS: { name: string; icon: IconName }[] = [
   { name: "index", icon: "home" },
   { name: "send", icon: "arrow-up-right" },
   { name: "receive", icon: "download" },
+  { name: "bills", icon: "smartphone" },
   { name: "earn", icon: "trending-up" },
   { name: "gas", icon: "zap" },
   { name: "activity", icon: "list" },
@@ -92,6 +93,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="send" />
       <Tabs.Screen name="receive" />
+      <Tabs.Screen name="bills" />
       <Tabs.Screen name="earn" />
       <Tabs.Screen name="gas" />
       <Tabs.Screen name="activity" />
