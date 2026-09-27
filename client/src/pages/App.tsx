@@ -719,7 +719,6 @@ function SatoApp() {
     { id: "bills", label: "Pay bills", icon: Smartphone },
     { id: "earn", label: "Earn", icon: TrendingUp },
     { id: "gas", label: "Gas", icon: Fuel },
-    { id: "activity", label: "Activity", icon: Receipt },
   ];
 
   return (
@@ -766,28 +765,34 @@ function SatoApp() {
         </div>
 
         <div className="sidebar-account">
-          <div className="account-row">
+          <button
+            type="button"
+            className={view === "activity" ? "account-card active" : "account-card"}
+            onClick={() => setView("activity")}
+            title="View your activity"
+          >
             <span className="account-avatar">{initials}</span>
             <span className="account-meta">
               <strong>{myName ? `@${myName}` : "Unnamed"}</strong>
-              <span className="account-addr">
-                <small>{short(address)}</small>
-                <CopyButton value={address} />
-                <a
-                  className="account-explorer"
-                  href={explorerAddr(address)}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="View on explorer"
-                >
-                  <ExternalLink size={12} />
-                </a>
-              </span>
+              <small>{short(address)}</small>
             </span>
-          </div>
-          <button className="account-signout" onClick={disconnectWallet}>
-            <LogOut size={14} /> Disconnect
+            <Receipt size={16} className="account-card-go" />
           </button>
+          <div className="account-tools">
+            <CopyButton value={address} />
+            <a
+              className="account-explorer icon-btn"
+              href={explorerAddr(address)}
+              target="_blank"
+              rel="noreferrer"
+              title="View on explorer"
+            >
+              <ExternalLink size={13} />
+            </a>
+            <button className="account-signout" onClick={disconnectWallet}>
+              <LogOut size={14} /> Disconnect
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -2865,16 +2870,18 @@ const shellStyles = `
 .nav-item.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
 .nav-item.active svg{color:var(--ink);}
 .nav-item.active::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--orange);margin-left:auto;flex-shrink:0;}
-.sidebar-account{border-top:1px solid var(--line);padding-top:14px;margin-top:14px;}
-.account-row{display:flex;align-items:center;gap:10px;padding:4px 6px;}
-.account-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#446aa8;display:grid;place-items:center;font-size:12px;font-weight:700;}
-.account-meta{display:flex;flex-direction:column;min-width:0;}
-.account-meta strong{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sidebar-account{border-top:1px solid var(--line);padding-top:12px;margin-top:12px;}
+.account-card{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:8px;border-radius:11px;cursor:pointer;font-family:var(--sans);text-align:left;transition:background .14s,box-shadow .14s;}
+.account-card:hover{background:#ecebe5;}
+.account-card.active{background:var(--white);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
+.account-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#446aa8;display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;}
+.account-meta{display:flex;flex-direction:column;min-width:0;flex:1;}
+.account-meta strong{font-size:13.5px;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .account-meta small{font-size:11.5px;color:var(--muted);font-family:var(--mono);}
-.account-addr{display:flex;align-items:center;gap:5px;}
-.account-explorer{display:inline-flex;color:var(--muted);padding:1px;border-radius:6px;transition:color .14s;}
-.account-explorer:hover{color:var(--ink);}
-.account-signout{display:flex;align-items:center;gap:7px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:9px 6px;margin-top:6px;border-radius:9px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
+.account-card-go{color:var(--muted);flex-shrink:0;transition:color .14s;}
+.account-card:hover .account-card-go,.account-card.active .account-card-go{color:var(--ink);}
+.account-tools{display:flex;align-items:center;gap:6px;padding:8px 4px 0;}
+.account-signout{display:flex;align-items:center;gap:7px;margin-left:auto;border:0;background:transparent;color:var(--text-muted);padding:6px 9px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
 .account-signout:hover{color:var(--ink);background:#ecebe5;}
 
 /* Main */
