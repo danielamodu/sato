@@ -2854,7 +2854,7 @@ const shellStyles = `
 .brand-mark img{width:100%;height:100%;object-fit:cover;display:block;}
 .brand-name{font-weight:700;font-size:17px;letter-spacing:-.02em;}
 .brand-badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:var(--mint);color:var(--navy);padding:2px 7px;border-radius:999px;font-weight:700;}
-.sidebar-scroll{flex:1;display:flex;flex-direction:column;min-height:0;}
+.sidebar-scroll{flex:1;display:flex;flex-direction:column;min-height:0;overflow-y:auto;overflow-x:hidden;margin:0 -4px;padding:0 4px;}
 .nav-group-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:0 12px 8px;}
 .sidebar-nav{display:flex;flex-direction:column;gap:2px;}
 .sidebar-promo{border:1px solid var(--line);background:var(--white);border-radius:14px;padding:14px;margin:12px 0;}
