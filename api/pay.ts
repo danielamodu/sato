@@ -45,19 +45,41 @@ const SIGNING_SECRET = process.env.PAY_SIGNING_SECRET || VTPASS_SECRET_KEY;
 
 // Spread added over spot to cover the FX/settlement window (basis points).
 const SPREAD_BPS = Number(process.env.PAY_SPREAD_BPS) || 150;
-// Per-order naira bounds.
+// Per-order naira bounds for amounts the user types (airtime, electricity).
 const MIN_NGN = 50;
 const MAX_NGN = 50_000;
+// Sanity ceiling for fixed-price plans the server prices itself (data, cable);
+// a DStv Premium bouquet already runs ~₦45k, so this can't be as tight.
+const MAX_FIXED_NGN = 500_000;
 // How long a signed quote stays fulfillable (rate lock + confirmation window).
 const QUOTE_TTL_MS = 20 * 60 * 1000;
 
-// Airtime billers: our token -> VTPass serviceID.
-const AIRTIME: Record<string, string> = {
-  mtn: "mtn",
-  glo: "glo",
-  airtel: "airtel",
-  "9mobile": "etisalat",
+// Bill categories, and our friendly token -> VTPass serviceID within each. The
+// client speaks the friendly token (mtn, dstv, ikeja…); VTPass gets the mapped
+// serviceID. Add a biller by dropping it in here.
+type Category = "airtime" | "data" | "electricity" | "cable";
+
+const BILLERS: Record<Category, Record<string, string>> = {
+  airtime: { mtn: "mtn", glo: "glo", airtel: "airtel", "9mobile": "etisalat" },
+  data: { mtn: "mtn-data", glo: "glo-data", airtel: "airtel-data", "9mobile": "etisalat-data" },
+  electricity: {
+    ikeja: "ikeja-electric", eko: "eko-electric", abuja: "abuja-electric",
+    ibadan: "ibadan-electric", enugu: "enugu-electric", ph: "portharcourt-electric",
+    kano: "kano-electric", jos: "jos-electric", kaduna: "kaduna-electric", benin: "benin-electric",
+  },
+  cable: { dstv: "dstv", gotv: "gotv", startimes: "startimes" },
 };
+
+// Where the price is set by the chosen plan/bouquet (server looks it up so the
+// client can't understate it), vs. an amount the user types.
+const FIXED_PRICE = new Set<Category>(["data", "cable"]);
+// Categories that carry a billersCode we can verify (meter / smartcard).
+const VERIFIABLE = new Set<Category>(["electricity", "cable"]);
+
+// Friendly token -> VTPass serviceID, or null if it isn't in the category.
+function billerId(service: string, token: string): string | null {
+  return BILLERS[service as Category]?.[token] ?? null;
+}
 
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -65,8 +87,9 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 // --- signed quote --------------------------------------------------------
 
 interface Quote {
-  service: "airtime";
-  serviceID: string; // mtn | glo | airtel | 9mobile
+  service: Category;
+  serviceID: string; // friendly biller token within the category
+  variation_code: string; // data/cable plan, or electricity meter type; "" for airtime
   amountNgn: number;
   sats: string; // sats the payer must send to the treasury
   treasury: string;
@@ -74,7 +97,7 @@ interface Quote {
 }
 
 function signQuote(q: Quote): string {
-  const msg = [q.service, q.serviceID, q.amountNgn, q.sats, q.treasury, q.exp].join("|");
+  const msg = [q.service, q.serviceID, q.variation_code, q.amountNgn, q.sats, q.treasury, q.exp].join("|");
   return createHmac("sha256", SIGNING_SECRET).update(msg).digest("hex");
 }
 
@@ -195,7 +218,7 @@ function requestIdFor(txid: string, whenMs: number): string {
 
 // --- VTPass --------------------------------------------------------------
 
-async function vtpass(path: string, body: Record<string, unknown>): Promise<any> {
+async function vtPost(path: string, body: Record<string, unknown>): Promise<any> {
   const r = await fetch(`${VTPASS_BASE}/${path}`, {
     method: "POST",
     headers: {
@@ -206,6 +229,58 @@ async function vtpass(path: string, body: Record<string, unknown>): Promise<any>
     body: JSON.stringify(body),
   });
   return r.json().catch(() => ({}));
+}
+
+async function vtGet(path: string): Promise<any> {
+  const r = await fetch(`${VTPASS_BASE}/${path}`, {
+    headers: { "api-key": VTPASS_API_KEY, "secret-key": VTPASS_SECRET_KEY },
+  });
+  return r.json().catch(() => ({}));
+}
+
+interface Variation {
+  variation_code: string;
+  name: string;
+  amount: number; // naira, rounded
+  fixedPrice: boolean;
+}
+
+// A product's plans/bouquets (data bundles, TV packages). VTPass nests these
+// under content.variations (some older endpoints spell it "varations" — accept
+// both). Drops any malformed row so the client only sees usable options.
+async function fetchVariations(vtServiceID: string): Promise<Variation[]> {
+  const res = await vtGet(`service-variations?serviceID=${encodeURIComponent(vtServiceID)}`);
+  const arr: any[] = res?.content?.variations || res?.content?.varations || [];
+  return arr
+    .map((v) => ({
+      variation_code: String(v?.variation_code ?? ""),
+      name: String(v?.name ?? ""),
+      amount: Math.round(Number(v?.variation_amount) || 0),
+      fixedPrice: String(v?.fixedPrice ?? "").toLowerCase() === "yes",
+    }))
+    .filter((v) => v.variation_code && v.amount > 0);
+}
+
+// The naira price of one plan — used to price data/cable quotes server-side so
+// the client can't understate the amount. null if the plan isn't offered.
+async function variationAmount(vtServiceID: string, code: string): Promise<number | null> {
+  const found = (await fetchVariations(vtServiceID)).find((v) => v.variation_code === code);
+  return found ? found.amount : null;
+}
+
+// Verify a meter/smartcard with the biller; returns the customer name on file
+// (or null if the code is unknown). Electricity also needs the meter `type`.
+async function verifyBillersCode(
+  vtServiceID: string,
+  billersCode: string,
+  type?: string
+): Promise<{ name: string; address?: string } | null> {
+  const body: Record<string, unknown> = { billersCode, serviceID: vtServiceID };
+  if (type) body.type = type;
+  const c = (await vtPost("merchant-verify", body))?.content || {};
+  const name = c.Customer_Name || c.customerName || c.Customer_Name_1 || "";
+  if (!name || c.error || c.WrongBillersCode) return null;
+  return { name: String(name), address: c.Address ? String(c.Address) : undefined };
 }
 
 // Normalise a VTPass pay/requery response to our order status.
@@ -227,15 +302,83 @@ export default async function handler(req: Request, res: Response) {
 
   const action = String(req.body?.action || "");
 
-  // 1) QUOTE — price a naira bill in sats and sign it.
+  // Resolve + validate a (service, token) pair. Returns the VTPass serviceID,
+  // or sends a 400 and returns null for the caller to bail on.
+  const resolve = (service: string, token: string, res: Response): string | null => {
+    const vt = billerId(service, token);
+    if (!vt) {
+      res.status(400).json({ error: "Unknown biller." });
+      return null;
+    }
+    return vt;
+  };
+
+  // LIST — plans/bouquets for a data or cable biller (feeds the plan picker).
+  if (action === "variations") {
+    const service = String(req.body?.service || "");
+    const token = String(req.body?.serviceID || "");
+    if (!FIXED_PRICE.has(service as Category))
+      return res.status(400).json({ error: "No plans for this biller." });
+    const vt = resolve(service, token, res);
+    if (!vt) return;
+    try {
+      return res.status(200).json({ variations: await fetchVariations(vt) });
+    } catch {
+      return res.status(502).json({ error: "Couldn't load plans — try again." });
+    }
+  }
+
+  // VERIFY — confirm a meter/smartcard and return the customer name on file.
+  if (action === "verify") {
+    const service = String(req.body?.service || "");
+    const token = String(req.body?.serviceID || "");
+    const billersCode = String(req.body?.billersCode || "").trim();
+    const type = String(req.body?.type || "").trim() || undefined;
+    if (!VERIFIABLE.has(service as Category))
+      return res.status(400).json({ error: "Nothing to verify for this biller." });
+    const vt = resolve(service, token, res);
+    if (!vt) return;
+    if (!/^\d{5,20}$/.test(billersCode))
+      return res.status(400).json({ error: "Enter a valid meter/smartcard number." });
+    try {
+      const who = await verifyBillersCode(vt, billersCode, service === "electricity" ? type : undefined);
+      if (!who) return res.status(400).json({ error: "Couldn't verify that number." });
+      return res.status(200).json(who);
+    } catch {
+      return res.status(502).json({ error: "Verification is unavailable — try again." });
+    }
+  }
+
+  // 1) QUOTE — price a bill in sats and sign it. Fixed-price categories (data,
+  // cable) are priced from the chosen plan; the rest from the user's naira.
   if (action === "quote") {
-    const serviceID = String(req.body?.serviceID || "");
-    const amountNgn = Math.floor(Number(req.body?.amountNgn));
-    if (!AIRTIME[serviceID]) return res.status(400).json({ error: "Unknown network." });
-    if (!Number.isFinite(amountNgn) || amountNgn < MIN_NGN || amountNgn > MAX_NGN)
-      return res
-        .status(400)
-        .json({ error: `Enter ₦${MIN_NGN}–₦${MAX_NGN.toLocaleString()}.` });
+    const service = String(req.body?.service || "airtime") as Category;
+    const token = String(req.body?.serviceID || "");
+    const variation = String(req.body?.variation_code || "").trim();
+    const vt = resolve(service, token, res);
+    if (!vt) return;
+
+    let amountNgn: number;
+    if (FIXED_PRICE.has(service)) {
+      if (!variation) return res.status(400).json({ error: "Pick a plan first." });
+      let priced: number | null;
+      try {
+        priced = await variationAmount(vt, variation);
+      } catch {
+        return res.status(502).json({ error: "Couldn't load plans — try again." });
+      }
+      if (priced == null) return res.status(400).json({ error: "That plan isn't available." });
+      if (priced < MIN_NGN || priced > MAX_FIXED_NGN)
+        return res.status(400).json({ error: "That plan is out of range." });
+      amountNgn = priced;
+    } else {
+      amountNgn = Math.floor(Number(req.body?.amountNgn));
+      if (!Number.isFinite(amountNgn) || amountNgn < MIN_NGN || amountNgn > MAX_NGN)
+        return res.status(400).json({ error: `Enter ₦${MIN_NGN}–₦${MAX_NGN.toLocaleString()}.` });
+      if (service === "electricity" && variation !== "prepaid" && variation !== "postpaid")
+        return res.status(400).json({ error: "Choose prepaid or postpaid." });
+    }
+
     let rate: number;
     try {
       rate = await btcNgn();
@@ -243,8 +386,9 @@ export default async function handler(req: Request, res: Response) {
       return res.status(502).json({ error: "Live rate unavailable — try again." });
     }
     const q: Quote = {
-      service: "airtime",
-      serviceID,
+      service,
+      serviceID: token,
+      variation_code: service === "airtime" ? "" : variation,
       amountNgn,
       sats: String(ngnToSats(amountNgn, rate)),
       treasury: TREASURY,
@@ -264,11 +408,19 @@ export default async function handler(req: Request, res: Response) {
       return res.status(400).json({ error: "Invalid or tampered quote." });
     if (q.exp < Date.now())
       return res.status(410).json({ error: "Quote expired — get a fresh one." });
-    if (!AIRTIME[q.serviceID]) return res.status(400).json({ error: "Unknown network." });
+    const vt = billerId(q.service, q.serviceID);
+    if (!vt) return res.status(400).json({ error: "Unknown biller." });
     if (!/^(0\d{10}|234\d{10})$/.test(phone))
       return res.status(400).json({ error: "Enter a valid phone number." });
     if (!/^[0-9a-fA-F]{64}$/.test(txid))
       return res.status(400).json({ error: "Missing payment reference." });
+
+    // billersCode: the meter/smartcard to credit; data credits the phone, and
+    // airtime has none. Verifiable categories must carry a plausible code.
+    let billersCode = String(req.body?.billersCode || "").trim();
+    if (q.service === "data" && !billersCode) billersCode = phone;
+    if (VERIFIABLE.has(q.service) && !/^\d{5,20}$/.test(billersCode))
+      return res.status(400).json({ error: "Enter a valid meter/smartcard number." });
 
     const check = await verifyPayment(txid, BigInt(q.sats));
     if (!check.ok)
@@ -277,26 +429,35 @@ export default async function handler(req: Request, res: Response) {
         .json({ status: check.pending ? "pending" : "failed", error: check.error });
 
     const requestId = requestIdFor(txid, check.whenMs);
+    // The pay body VTPass expects varies by category; build it from the signed
+    // quote (never a client-echoed amount) plus the submit-time destination.
+    const payBody: Record<string, unknown> = {
+      request_id: requestId,
+      serviceID: vt,
+      amount: q.amountNgn,
+      phone,
+    };
+    if (q.service !== "airtime") payBody.billersCode = billersCode || phone;
+    if (q.variation_code) payBody.variation_code = q.variation_code;
+    if (q.service === "cable") payBody.subscription_type = "change";
+
     // Only the winner of the one-shot claim calls /pay; a duplicate submit
     // re-queries the original instead (also idempotent on requestId).
     const won = await claimTxid(txid);
     const raw = won
-      ? await vtpass("pay", {
-          request_id: requestId,
-          serviceID: q.serviceID,
-          amount: q.amountNgn,
-          phone,
-        })
-      : await vtpass("requery", { request_id: requestId });
+      ? await vtPost("pay", payBody)
+      : await vtPost("requery", { request_id: requestId });
     const out = readVtpass(raw);
     return res.status(out.status === "failed" ? 502 : 200).json({
       status: out.status,
       detail: out.detail,
       requestId,
+      service: q.service,
       serviceID: q.serviceID,
       amountNgn: q.amountNgn,
       sats: q.sats,
       phone,
+      billersCode: billersCode || undefined,
       txid,
     });
   }
