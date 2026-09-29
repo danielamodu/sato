@@ -1613,6 +1613,36 @@ function WelcomeGuide(props: {
   );
 }
 
+function QuickActions(props: {
+  goSend: () => void;
+  goReceive: () => void;
+  onFaucet: () => void;
+  goEarn: () => void;
+  busy: string | null;
+}) {
+  const { goSend, goReceive, onFaucet, goEarn, busy } = props;
+  return (
+    <div className="quick-actions">
+      <button className="qa-btn primary" onClick={goSend}>
+        <span className="qa-ico"><Send size={19} /></span>
+        <span className="qa-label">Send</span>
+      </button>
+      <button className="qa-btn" onClick={goReceive}>
+        <span className="qa-ico"><ArrowDownLeft size={19} /></span>
+        <span className="qa-label">Receive</span>
+      </button>
+      <button className="qa-btn" onClick={onFaucet} disabled={busy === "faucet"}>
+        <span className="qa-ico"><Plus size={19} /></span>
+        <span className="qa-label">{busy === "faucet" ? "Funding…" : "Add funds"}</span>
+      </button>
+      <button className="qa-btn" onClick={goEarn}>
+        <span className="qa-ico"><TrendingUp size={19} /></span>
+        <span className="qa-label">Earn</span>
+      </button>
+    </div>
+  );
+}
+
 function Overview(props: {
   balance: bigint;
   btcUsd: number | null;
@@ -1680,6 +1710,14 @@ function Overview(props: {
 
       <BalanceHero balance={balance} btcUsd={btcUsd} events={events} />
 
+      <QuickActions
+        goSend={goSend}
+        goReceive={goReceive}
+        onFaucet={onFaucet}
+        goEarn={() => go("earn")}
+        busy={busy}
+      />
+
       <div className="stat-row two">
         <StatTile
           label="Transactions"
@@ -1707,27 +1745,6 @@ function Overview(props: {
         </section>
 
         <div className="col-stack">
-          <section className="panel">
-            <span className="panel-eyebrow">Quick actions</span>
-            <div className="stack-actions">
-              <div className="action-pair">
-                <button className="btn primary" onClick={goSend}>
-                  <Send size={16} /> Send
-                </button>
-                <button className="btn soft" onClick={goReceive}>
-                  <ArrowDownLeft size={16} /> Receive
-                </button>
-              </div>
-              <button
-                className="btn soft full"
-                onClick={onFaucet}
-                disabled={busy === "faucet"}
-              >
-                <Plus size={16} />
-                {busy === "faucet" ? "Funding…" : "Get test sBTC"}
-              </button>
-            </div>
-          </section>
           <section className="panel" id="claim-username">
             <span className="panel-eyebrow">Your username</span>
             {myName ? (
@@ -3676,6 +3693,12 @@ const shellStyles = `
 .gs-step.done{color:var(--text-muted);cursor:default;}
 .gs-step.done .gs-num{background:var(--orange);border-color:var(--orange);color:#fff;}
 
+/* Tabular figures on every money/number readout — digits stay column-aligned
+   during count-up so the hero never jitters, the way Revolut/OKX balances hold. */
+.balance-num,.bh-num,.bh-sub,.stat-value,.lock-row strong,.earn-receive-total,
+.aside-balance strong,.bs-balance b,.field-usd,.receive-name,.receive-addr-val,
+.account-meta small{font-variant-numeric:tabular-nums;}
+
 .balance-line{display:flex;align-items:baseline;gap:8px;}
 .balance-num{font-size:46px;font-weight:700;letter-spacing:-.03em;line-height:1;}
 .balance-unit{font-size:17px;color:var(--text-muted);font-weight:600;}
@@ -3686,7 +3709,7 @@ const shellStyles = `
 .bh-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
 .bh-eyebrow{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
 .bh-value{display:flex;align-items:baseline;gap:8px;margin:9px 0 3px;}
-.bh-num{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1;}
+.bh-num{font-size:44px;font-weight:800;letter-spacing:-.035em;line-height:1;}
 .bh-num small{font-size:16px;color:var(--text-muted);font-weight:600;}
 .bh-sub{font-size:13px;color:var(--text-muted);}
 .bh-trend{display:inline-flex;align-items:center;font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:999px;white-space:nowrap;flex-shrink:0;}
@@ -3898,6 +3921,24 @@ const shellStyles = `
 /* Quick-action pair (Overview) */
 .action-pair{display:flex;gap:10px;}
 .action-pair .btn{flex:1;}
+
+/* Quick actions — OKX-style tactile row under the balance hero */
+.quick-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+.qa-btn{display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:17px 12px;cursor:pointer;font-family:var(--sans);color:var(--ink);box-shadow:var(--elev-1);transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;}
+.qa-btn:not(:disabled):hover{transform:translateY(-2px);border-color:#cdd0ca;box-shadow:var(--elev-2);}
+.qa-btn:not(:disabled):active{transform:translateY(0);box-shadow:var(--elev-1);}
+.qa-btn:disabled{opacity:.55;cursor:default;}
+.qa-ico{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:var(--paper);border:1px solid var(--line);color:var(--ink);transition:color .16s,border-color .16s,transform .18s var(--ease);}
+.qa-btn:not(:disabled):hover .qa-ico{color:var(--orange);border-color:#cdd0ca;transform:scale(1.05);}
+.qa-btn.primary .qa-ico{background:linear-gradient(180deg,#1b2433 0%,var(--ink) 100%);border-color:var(--ink);color:#fff;box-shadow:0 1px 2px rgba(13,17,23,.28),0 8px 18px -8px rgba(13,17,23,.5);}
+.qa-btn.primary:not(:disabled):hover .qa-ico{color:#fff;transform:scale(1.05);}
+.qa-label{font-size:13px;font-weight:700;letter-spacing:-.01em;}
+@media(max-width:640px){
+  .quick-actions{gap:8px;}
+  .qa-btn{padding:14px 8px;border-radius:14px;gap:8px;}
+  .qa-ico{width:42px;height:42px;border-radius:13px;}
+  .qa-label{font-size:12px;}
+}
 
 /* Receive view */
 .receive-panel{display:flex;flex-direction:column;align-items:center;text-align:center;}
