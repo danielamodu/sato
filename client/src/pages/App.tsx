@@ -216,6 +216,10 @@ function SatoApp() {
   const [busy, setBusy] = useState<string | null>(null);
   const [txs, setTxs] = useState<SatoTx[]>([]);
   const [txLoading, setTxLoading] = useState(true);
+  // Flips true once the first full wallet load settles, and stays true. The
+  // first-run guide waits on it so a set-up wallet never flashes the guide
+  // during the initial async load.
+  const [hydrated, setHydrated] = useState(false);
   const [earn, setEarn] = useState<EarnStats>({
     liquid: 0n,
     locked: 0n,
@@ -270,6 +274,7 @@ function SatoApp() {
       setTxs(await getRecentTransactions(addr, 25));
     } finally {
       setTxLoading(false);
+      setHydrated(true);
     }
   };
 
@@ -869,6 +874,7 @@ function SatoApp() {
             address={address}
             txs={txs}
             txLoading={txLoading}
+            hydrated={hydrated}
           />
         )}
 
@@ -1288,7 +1294,7 @@ function BalanceHero({
   const up = (pct ?? 0) >= 0;
 
   return (
-    <section className="balance-hero">
+    <section className="balance-hero bh-dark">
       <div className="bh-top">
         <div>
           <span className="bh-eyebrow">Total balance</span>
@@ -1526,8 +1532,9 @@ function WelcomeGuide(props: {
   busy: string | null;
   onFaucet: () => void;
   go: (v: View) => void;
+  hydrated: boolean;
 }) {
-  const { balance, myName, txCount, busy, onFaucet, go } = props;
+  const { balance, myName, txCount, busy, onFaucet, go, hydrated } = props;
   const [dismissed, setDismissed] = useState(
     () => typeof localStorage !== "undefined" && localStorage.getItem("sato-welcome") === "done"
   );
@@ -1535,7 +1542,9 @@ function WelcomeGuide(props: {
   const funded = balance > 0n;
   const named = !!myName;
   const sent = txCount > 0;
-  if (dismissed || (funded && named && sent)) return null;
+  // Wait for the first load to settle before deciding — otherwise a set-up
+  // wallet flashes the guide for a frame while balance/name/txs are still 0.
+  if (!hydrated || dismissed || (funded && named && sent)) return null;
 
   function dismiss() {
     try {
@@ -1613,6 +1622,36 @@ function WelcomeGuide(props: {
   );
 }
 
+function QuickActions(props: {
+  goSend: () => void;
+  goReceive: () => void;
+  onFaucet: () => void;
+  goEarn: () => void;
+  busy: string | null;
+}) {
+  const { goSend, goReceive, onFaucet, goEarn, busy } = props;
+  return (
+    <div className="quick-actions">
+      <button className="qa-btn primary" onClick={goSend}>
+        <span className="qa-ico"><Send size={19} /></span>
+        <span className="qa-label">Send</span>
+      </button>
+      <button className="qa-btn" onClick={goReceive}>
+        <span className="qa-ico"><ArrowDownLeft size={19} /></span>
+        <span className="qa-label">Receive</span>
+      </button>
+      <button className="qa-btn" onClick={onFaucet} disabled={busy === "faucet"}>
+        <span className="qa-ico"><Plus size={19} /></span>
+        <span className="qa-label">{busy === "faucet" ? "Funding…" : "Add funds"}</span>
+      </button>
+      <button className="qa-btn" onClick={goEarn}>
+        <span className="qa-ico"><TrendingUp size={19} /></span>
+        <span className="qa-label">Earn</span>
+      </button>
+    </div>
+  );
+}
+
 function Overview(props: {
   balance: bigint;
   btcUsd: number | null;
@@ -1631,6 +1670,7 @@ function Overview(props: {
   address: string;
   txs: SatoTx[];
   txLoading: boolean;
+  hydrated: boolean;
 }) {
   const {
     balance,
@@ -1650,12 +1690,14 @@ function Overview(props: {
     address,
     txs,
     txLoading,
+    hydrated,
   } = props;
 
   return (
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Your wallet</span>
           <h1>Overview</h1>
           <p>Your Sato wallet on testnet.</p>
         </div>
@@ -1669,6 +1711,16 @@ function Overview(props: {
         </button>
       </header>
 
+      <BalanceHero balance={balance} btcUsd={btcUsd} events={events} />
+
+      <QuickActions
+        goSend={goSend}
+        goReceive={goReceive}
+        onFaucet={onFaucet}
+        goEarn={() => go("earn")}
+        busy={busy}
+      />
+
       <WelcomeGuide
         balance={balance}
         myName={myName}
@@ -1676,9 +1728,8 @@ function Overview(props: {
         busy={busy}
         onFaucet={onFaucet}
         go={go}
+        hydrated={hydrated}
       />
-
-      <BalanceHero balance={balance} btcUsd={btcUsd} events={events} />
 
       <div className="stat-row two">
         <StatTile
@@ -1707,27 +1758,6 @@ function Overview(props: {
         </section>
 
         <div className="col-stack">
-          <section className="panel">
-            <span className="panel-eyebrow">Quick actions</span>
-            <div className="stack-actions">
-              <div className="action-pair">
-                <button className="btn primary" onClick={goSend}>
-                  <Send size={16} /> Send
-                </button>
-                <button className="btn soft" onClick={goReceive}>
-                  <ArrowDownLeft size={16} /> Receive
-                </button>
-              </div>
-              <button
-                className="btn soft full"
-                onClick={onFaucet}
-                disabled={busy === "faucet"}
-              >
-                <Plus size={16} />
-                {busy === "faucet" ? "Funding…" : "Get test sBTC"}
-              </button>
-            </div>
-          </section>
           <section className="panel" id="claim-username">
             <span className="panel-eyebrow">Your username</span>
             {myName ? (
@@ -1843,6 +1873,7 @@ function SendView(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Payments</span>
           <h1>Send sBTC</h1>
           <p>Pay a @username or a Stacks address.</p>
         </div>
@@ -2147,6 +2178,7 @@ function ReceiveView(props: {
       </div>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Payments</span>
           <h1>Receive sBTC</h1>
           <p>Share your code or link to get paid.</p>
         </div>
@@ -2448,6 +2480,7 @@ function EarnView(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Grow</span>
           <h1>Earn</h1>
           <p>Your balance earns automatically. Lock sats for a higher rate.</p>
         </div>
@@ -2827,6 +2860,7 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Spend</span>
           <h1>Pay bills</h1>
           <p>Turn sBTC into airtime, data, power and cable TV — priced live.</p>
         </div>
@@ -3234,6 +3268,7 @@ function SendBankView(props: { balance: bigint; btcUsd: number | null; onPaid?: 
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Off-ramp</span>
           <h1>Cash out</h1>
           <p>Send sBTC straight to a Nigerian bank account, priced live.</p>
         </div>
@@ -3407,6 +3442,7 @@ function GasView(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Network</span>
           <h1>Gas</h1>
           <p>Sato covers network fees from a shared STX pool.</p>
         </div>
@@ -3529,6 +3565,7 @@ function ActivityView(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">History</span>
           <h1>Activity</h1>
           <p>Your testnet transactions, straight from the chain.</p>
         </div>
@@ -3642,6 +3679,7 @@ const shellStyles = `
 /* Main */
 .main{padding:40px clamp(24px,5vw,56px);max-width:1120px;width:100%;}
 .page-head{margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+.page-kicker{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px;}
 .page-head h1{font-size:26px;letter-spacing:-.03em;margin:0 0 4px;}
 .page-head p{color:var(--text-muted);font-size:14.5px;margin:0;}
 
@@ -3676,6 +3714,12 @@ const shellStyles = `
 .gs-step.done{color:var(--text-muted);cursor:default;}
 .gs-step.done .gs-num{background:var(--orange);border-color:var(--orange);color:#fff;}
 
+/* Tabular figures on every money/number readout — digits stay column-aligned
+   during count-up so the hero never jitters, the way Revolut/OKX balances hold. */
+.balance-num,.bh-num,.bh-sub,.stat-value,.lock-row strong,.earn-receive-total,
+.aside-balance strong,.bs-balance b,.field-usd,.receive-name,.receive-addr-val,
+.account-meta small{font-variant-numeric:tabular-nums;}
+
 .balance-line{display:flex;align-items:baseline;gap:8px;}
 .balance-num{font-size:46px;font-weight:700;letter-spacing:-.03em;line-height:1;}
 .balance-unit{font-size:17px;color:var(--text-muted);font-weight:600;}
@@ -3686,7 +3730,7 @@ const shellStyles = `
 .bh-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
 .bh-eyebrow{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
 .bh-value{display:flex;align-items:baseline;gap:8px;margin:9px 0 3px;}
-.bh-num{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1;}
+.bh-num{font-size:44px;font-weight:800;letter-spacing:-.035em;line-height:1;}
 .bh-num small{font-size:16px;color:var(--text-muted);font-weight:600;}
 .bh-sub{font-size:13px;color:var(--text-muted);}
 .bh-trend{display:inline-flex;align-items:center;font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:999px;white-space:nowrap;flex-shrink:0;}
@@ -3712,6 +3756,23 @@ const shellStyles = `
   .bchart-line{stroke-dasharray:1;stroke-dashoffset:1;animation:bdraw 1.05s var(--ease) .05s forwards;}
 }
 @keyframes bdraw{to{stroke-dashoffset:0;}}
+
+/* Bold focal balance hero: a dark, dimensional card that mirrors the landing
+   product mockup. This is a single accent card, not an app-wide dark theme. */
+.balance-hero.bh-dark{background:radial-gradient(120% 140% at 85% -10%,#22303f 0%,#131c28 46%,#0d1117 100%);border-color:#26313f;color:#fff;padding:26px 28px 14px;box-shadow:0 24px 50px -18px rgba(13,17,23,.55),0 2px 6px -2px rgba(13,17,23,.35);}
+.balance-hero.bh-dark .bh-eyebrow{color:#93a0b0;}
+.balance-hero.bh-dark .bh-num{color:#fff;font-size:54px;}
+.balance-hero.bh-dark .bh-num small{color:#93a0b0;}
+.balance-hero.bh-dark .bh-sub{color:#8a97a6;}
+.balance-hero.bh-dark .bh-trend.up{background:#153726;color:#7fd6a3;}
+.balance-hero.bh-dark .bh-trend.down{background:#3a1c17;color:#f3a08c;}
+.balance-hero.bh-dark .bh-empty{border-color:#2a3543;color:#8a97a6;}
+.balance-hero.bh-dark .bchart-line{stroke:#eef2f6;}
+.balance-hero.bh-dark .bchart-area{fill:rgba(255,255,255,.09);}
+.balance-hero.bh-dark .bchart-svg circle{stroke:#131c28;}
+.balance-hero.bh-dark .bchart-foot{color:#8a97a6;}
+.balance-hero.bh-dark .bchart-foot span:first-child{color:#e7ecf1;}
+@media(max-width:640px){.balance-hero.bh-dark .bh-num{font-size:38px;}}
 
 .claimed-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
 .claimed-badge{display:inline-flex;align-items:center;gap:6px;background:#f0f7f3;color:#2f7d54;border:1px solid #cfe8db;padding:8px 14px;border-radius:999px;font-weight:700;font-size:15px;}
@@ -3898,6 +3959,24 @@ const shellStyles = `
 /* Quick-action pair (Overview) */
 .action-pair{display:flex;gap:10px;}
 .action-pair .btn{flex:1;}
+
+/* Quick actions — OKX-style tactile row under the balance hero */
+.quick-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+.qa-btn{display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:17px 12px;cursor:pointer;font-family:var(--sans);color:var(--ink);box-shadow:var(--elev-1);transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;}
+.qa-btn:not(:disabled):hover{transform:translateY(-2px);border-color:#cdd0ca;box-shadow:var(--elev-2);}
+.qa-btn:not(:disabled):active{transform:translateY(0);box-shadow:var(--elev-1);}
+.qa-btn:disabled{opacity:.55;cursor:default;}
+.qa-ico{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:var(--paper);border:1px solid var(--line);color:var(--ink);transition:color .16s,border-color .16s,transform .18s var(--ease);}
+.qa-btn:not(:disabled):hover .qa-ico{color:var(--orange);border-color:#cdd0ca;transform:scale(1.05);}
+.qa-btn.primary .qa-ico{background:linear-gradient(180deg,#1b2433 0%,var(--ink) 100%);border-color:var(--ink);color:#fff;box-shadow:0 1px 2px rgba(13,17,23,.28),0 8px 18px -8px rgba(13,17,23,.5);}
+.qa-btn.primary:not(:disabled):hover .qa-ico{color:#fff;transform:scale(1.05);}
+.qa-label{font-size:13px;font-weight:700;letter-spacing:-.01em;}
+@media(max-width:640px){
+  .quick-actions{gap:8px;}
+  .qa-btn{padding:14px 8px;border-radius:14px;gap:8px;}
+  .qa-ico{width:42px;height:42px;border-radius:13px;}
+  .qa-label{font-size:12px;}
+}
 
 /* Receive view */
 .receive-panel{display:flex;flex-direction:column;align-items:center;text-align:center;}

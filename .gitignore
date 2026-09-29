@@ -2,6 +2,11 @@
 **/node_modules
 .pnpm-store/
 
+# This project uses pnpm exclusively (see packageManager in package.json).
+# npm's lockfile ignores pnpm patches/overrides and can't produce a correct
+# install here — keep it out so it's never regenerated or committed.
+package-lock.json
+
 # Build outputs
 dist/
 build/

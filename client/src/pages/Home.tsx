@@ -101,7 +101,8 @@ export default function Home() {
       <main id="top">
         <section className="hero section-pad" id="product">
           <div className="hero-copy reveal reveal-one">
-            <h1>Bitcoin payments<br /><span>that feel human.</span></h1>
+            <span className="hero-eyebrow"><span className="hero-eyebrow-dot" />Built on Bitcoin · Live testnet app</span>
+            <h1>Bitcoin payments<br />that feel <span className="accent">human</span>.</h1>
             <p className="hero-lede">Send to <strong>@anyone</strong>, earn on your balance, and cash out to your local currency. Sato puts everyday money movement in one simple place.</p>
             <div className="hero-actions"><a className="primary-button" href="#waitlist">Get early access <ArrowRight size={17} /></a><a className="text-link" href="/app">Try the live testnet app <ArrowUpRight size={15} /></a><a className="text-link" href="#why-sato">See how it works <ChevronRight size={15} /></a></div>
           </div>
