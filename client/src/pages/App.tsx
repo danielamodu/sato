@@ -664,15 +664,30 @@ function SatoApp() {
 
   const initials = (myName ?? address).slice(0, 2).toUpperCase();
 
-  const nav: { id: View; label: string; icon: typeof LayoutGrid }[] = [
-    { id: "overview", label: "Overview", icon: LayoutGrid },
-    { id: "send", label: "Send", icon: Send },
-    { id: "receive", label: "Receive", icon: QrCode },
-    { id: "bills", label: "Pay bills", icon: Smartphone },
-    { id: "cashout", label: "Cash out", icon: Landmark },
-    { id: "earn", label: "Earn", icon: TrendingUp },
-    { id: "gas", label: "Gas", icon: Fuel },
+  type NavItem = { id: View; label: string; icon: typeof LayoutGrid };
+  // Grouped by intent so the growing feature set reads calmly. Gas is infra
+  // (top up the sponsor pool), so it lives in the account footer, not here.
+  const navGroups: { label: string; items: NavItem[] }[] = [
+    {
+      label: "Wallet",
+      items: [
+        { id: "overview", label: "Overview", icon: LayoutGrid },
+        { id: "send", label: "Send", icon: Send },
+        { id: "receive", label: "Receive", icon: QrCode },
+      ],
+    },
+    {
+      label: "Spend",
+      items: [
+        { id: "bills", label: "Pay bills", icon: Smartphone },
+        { id: "cashout", label: "Cash out", icon: Landmark },
+      ],
+    },
+    { label: "Grow", items: [{ id: "earn", label: "Earn", icon: TrendingUp }] },
   ];
+  const gasItem: NavItem = { id: "gas", label: "Gas", icon: Fuel };
+  // The mobile bottom bar has no footer, so it shows every destination flat.
+  const tabItems: NavItem[] = [...navGroups.flatMap((g) => g.items), gasItem];
 
   return (
     <div className="sato-shell">
@@ -689,24 +704,27 @@ function SatoApp() {
         </div>
 
         <div className="sidebar-scroll">
-          <span className="nav-group-label">Wallet</span>
-          <nav className="sidebar-nav">
-            {nav.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                className={view === id ? "nav-item active" : "nav-item"}
-                onClick={() => setView(id)}
-              >
-                <Icon size={18} />
-                {label}
-              </button>
-            ))}
-          </nav>
+          {navGroups.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <span className="nav-group-label">{group.label}</span>
+              <nav className="sidebar-nav">
+                {group.items.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    className={view === id ? "nav-item active" : "nav-item"}
+                    onClick={() => setView(id)}
+                  >
+                    <Icon size={18} />
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          ))}
         </div>
 
         <div className="sidebar-promo">
-          <strong>Testnet preview</strong>
-          <p>Funds aren't real here. Grab some test sBTC to try a send.</p>
+          <p className="promo-hint">Testnet — funds aren't real here.</p>
           <button
             className="btn soft sm full"
             onClick={onFaucet}
@@ -732,6 +750,14 @@ function SatoApp() {
             <Receipt size={16} className="account-card-go" />
           </button>
           <div className="account-tools">
+            <button
+              type="button"
+              className={view === "gas" ? "account-gas active" : "account-gas"}
+              onClick={() => setView("gas")}
+              title="Gas — top up the sponsor pool"
+            >
+              <Fuel size={14} /> Gas
+            </button>
             <CopyButton value={address} />
             <a
               className="account-explorer icon-btn"
@@ -855,7 +881,7 @@ function SatoApp() {
 
       {/* Mobile bottom tabs */}
       <nav className="tab-bar">
-        {nav.map(({ id, label, icon: Icon }) => (
+        {tabItems.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             className={view === id ? "tab active" : "tab"}
@@ -3396,10 +3422,12 @@ const shellStyles = `
 .brand-mark img{width:100%;height:100%;object-fit:cover;display:block;}
 .brand-name{font-weight:700;font-size:17px;letter-spacing:-.02em;}
 .brand-badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:var(--mint);color:var(--navy);padding:2px 7px;border-radius:999px;font-weight:700;}
-.sidebar-scroll{flex:1;display:flex;flex-direction:column;min-height:0;overflow-y:auto;overflow-x:hidden;margin:0 -4px;padding:0 4px;}
+.sidebar-scroll{flex:1;display:flex;flex-direction:column;gap:16px;min-height:0;overflow-y:auto;overflow-x:hidden;margin:0 -4px;padding:0 4px;scrollbar-width:none;-ms-overflow-style:none;}
+.sidebar-scroll::-webkit-scrollbar{width:0;height:0;display:none;}
 .nav-group-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:0 12px 8px;}
 .sidebar-nav{display:flex;flex-direction:column;gap:2px;}
-.sidebar-promo{border:1px solid var(--line);background:var(--white);border-radius:14px;padding:14px;margin:12px 0;}
+.sidebar-promo{border:1px solid var(--line);background:var(--white);border-radius:12px;padding:12px;margin:12px 0;}
+.promo-hint{font-size:12px;color:var(--text-muted);line-height:1.45;margin:0 0 9px;}
 .sidebar-promo strong{display:block;font-size:13px;letter-spacing:-.01em;margin-bottom:4px;}
 .sidebar-promo p{font-size:12px;color:var(--text-muted);line-height:1.5;margin:0 0 11px;}
 .nav-item{display:flex;align-items:center;gap:11px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:11px 12px;border-radius:11px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:background .14s,color .14s;text-align:left;}
@@ -3418,6 +3446,11 @@ const shellStyles = `
 .account-card-go{color:var(--muted);flex-shrink:0;transition:color .14s;}
 .account-card:hover .account-card-go,.account-card.active .account-card-go{color:var(--ink);}
 .account-tools{display:flex;align-items:center;gap:6px;padding:8px 4px 0;}
+.account-gas{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--text-muted);padding:6px 9px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
+.account-gas:hover{color:var(--ink);background:#ecebe5;}
+.account-gas.active{color:var(--ink);background:var(--white);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
+.account-gas svg{color:#9a958a;}
+.account-gas.active svg{color:var(--orange);}
 .account-signout{display:flex;align-items:center;gap:7px;margin-left:auto;border:0;background:transparent;color:var(--text-muted);padding:6px 9px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
 .account-signout:hover{color:var(--ink);background:#ecebe5;}
 
