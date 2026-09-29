@@ -1686,6 +1686,7 @@ function Overview(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Your wallet</span>
           <h1>Overview</h1>
           <p>Your Sato wallet on testnet.</p>
         </div>
@@ -1860,6 +1861,7 @@ function SendView(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Payments</span>
           <h1>Send sBTC</h1>
           <p>Pay a @username or a Stacks address.</p>
         </div>
@@ -2164,6 +2166,7 @@ function ReceiveView(props: {
       </div>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Payments</span>
           <h1>Receive sBTC</h1>
           <p>Share your code or link to get paid.</p>
         </div>
@@ -2465,6 +2468,7 @@ function EarnView(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Grow</span>
           <h1>Earn</h1>
           <p>Your balance earns automatically. Lock sats for a higher rate.</p>
         </div>
@@ -2844,6 +2848,7 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Spend</span>
           <h1>Pay bills</h1>
           <p>Turn sBTC into airtime, data, power and cable TV — priced live.</p>
         </div>
@@ -3251,6 +3256,7 @@ function SendBankView(props: { balance: bigint; btcUsd: number | null; onPaid?: 
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Off-ramp</span>
           <h1>Cash out</h1>
           <p>Send sBTC straight to a Nigerian bank account, priced live.</p>
         </div>
@@ -3424,6 +3430,7 @@ function GasView(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">Network</span>
           <h1>Gas</h1>
           <p>Sato covers network fees from a shared STX pool.</p>
         </div>
@@ -3546,6 +3553,7 @@ function ActivityView(props: {
     <>
       <header className="page-head">
         <div>
+          <span className="page-kicker">History</span>
           <h1>Activity</h1>
           <p>Your testnet transactions, straight from the chain.</p>
         </div>
@@ -3659,6 +3667,7 @@ const shellStyles = `
 /* Main */
 .main{padding:40px clamp(24px,5vw,56px);max-width:1120px;width:100%;}
 .page-head{margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+.page-kicker{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px;}
 .page-head h1{font-size:26px;letter-spacing:-.03em;margin:0 0 4px;}
 .page-head p{color:var(--text-muted);font-size:14.5px;margin:0;}
 
