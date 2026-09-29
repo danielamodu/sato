@@ -216,6 +216,10 @@ function SatoApp() {
   const [busy, setBusy] = useState<string | null>(null);
   const [txs, setTxs] = useState<SatoTx[]>([]);
   const [txLoading, setTxLoading] = useState(true);
+  // Flips true once the first full wallet load settles, and stays true. The
+  // first-run guide waits on it so a set-up wallet never flashes the guide
+  // during the initial async load.
+  const [hydrated, setHydrated] = useState(false);
   const [earn, setEarn] = useState<EarnStats>({
     liquid: 0n,
     locked: 0n,
@@ -270,6 +274,7 @@ function SatoApp() {
       setTxs(await getRecentTransactions(addr, 25));
     } finally {
       setTxLoading(false);
+      setHydrated(true);
     }
   };
 
@@ -869,6 +874,7 @@ function SatoApp() {
             address={address}
             txs={txs}
             txLoading={txLoading}
+            hydrated={hydrated}
           />
         )}
 
@@ -1526,8 +1532,9 @@ function WelcomeGuide(props: {
   busy: string | null;
   onFaucet: () => void;
   go: (v: View) => void;
+  hydrated: boolean;
 }) {
-  const { balance, myName, txCount, busy, onFaucet, go } = props;
+  const { balance, myName, txCount, busy, onFaucet, go, hydrated } = props;
   const [dismissed, setDismissed] = useState(
     () => typeof localStorage !== "undefined" && localStorage.getItem("sato-welcome") === "done"
   );
@@ -1535,7 +1542,9 @@ function WelcomeGuide(props: {
   const funded = balance > 0n;
   const named = !!myName;
   const sent = txCount > 0;
-  if (dismissed || (funded && named && sent)) return null;
+  // Wait for the first load to settle before deciding — otherwise a set-up
+  // wallet flashes the guide for a frame while balance/name/txs are still 0.
+  if (!hydrated || dismissed || (funded && named && sent)) return null;
 
   function dismiss() {
     try {
@@ -1661,6 +1670,7 @@ function Overview(props: {
   address: string;
   txs: SatoTx[];
   txLoading: boolean;
+  hydrated: boolean;
 }) {
   const {
     balance,
@@ -1680,6 +1690,7 @@ function Overview(props: {
     address,
     txs,
     txLoading,
+    hydrated,
   } = props;
 
   return (
@@ -1700,15 +1711,6 @@ function Overview(props: {
         </button>
       </header>
 
-      <WelcomeGuide
-        balance={balance}
-        myName={myName}
-        txCount={txs.length}
-        busy={busy}
-        onFaucet={onFaucet}
-        go={go}
-      />
-
       <BalanceHero balance={balance} btcUsd={btcUsd} events={events} />
 
       <QuickActions
@@ -1717,6 +1719,16 @@ function Overview(props: {
         onFaucet={onFaucet}
         goEarn={() => go("earn")}
         busy={busy}
+      />
+
+      <WelcomeGuide
+        balance={balance}
+        myName={myName}
+        txCount={txs.length}
+        busy={busy}
+        onFaucet={onFaucet}
+        go={go}
+        hydrated={hydrated}
       />
 
       <div className="stat-row two">
