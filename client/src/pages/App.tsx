@@ -611,10 +611,18 @@ function SatoApp() {
               like a text.
             </h1>
             <p className="auth-lede">
-              Connect a Stacks wallet to try Sato on testnet — claim a
-              @username, look someone up, and send sBTC against live on-chain
-              contracts.
+              Connect a Stacks wallet to try Sato on testnet — send to
+              @usernames, pay bills, earn on your balance, and cash out to
+              Naira, all against live on-chain contracts.
             </p>
+
+            <div className="auth-caps">
+              <span><AtSign size={13} /> Send to @names</span>
+              <span><Smartphone size={13} /> Pay bills</span>
+              <span><Landmark size={13} /> Cash out to Naira</span>
+              <span><TrendingUp size={13} /> Earn yield</span>
+              <span><Zap size={13} /> No gas fees</span>
+            </div>
 
             <button
               className="btn primary lg full"
@@ -792,6 +800,7 @@ function SatoApp() {
             goSend={() => setView("send")}
             goReceive={() => setView("receive")}
             goActivity={() => setView("activity")}
+            go={setView}
             busy={busy}
             address={address}
             txs={txs}
@@ -1442,6 +1451,104 @@ function BalanceSparkline({
 }
 
 // --- Overview view -------------------------------------------------------
+// First-run guide: the breadth of Sato at a glance, plus a 3-step path to the
+// "aha" moment (fund → claim a name → send). It fades out for good once the
+// user has done all three, or if they dismiss it — returning users get the
+// clean dashboard, never a nag.
+function WelcomeGuide(props: {
+  balance: bigint;
+  myName: string | null;
+  txCount: number;
+  busy: string | null;
+  onFaucet: () => void;
+  go: (v: View) => void;
+}) {
+  const { balance, myName, txCount, busy, onFaucet, go } = props;
+  const [dismissed, setDismissed] = useState(
+    () => typeof localStorage !== "undefined" && localStorage.getItem("sato-welcome") === "done"
+  );
+
+  const funded = balance > 0n;
+  const named = !!myName;
+  const sent = txCount > 0;
+  if (dismissed || (funded && named && sent)) return null;
+
+  function dismiss() {
+    try {
+      localStorage.setItem("sato-welcome", "done");
+    } catch {
+      /* private mode — just hide for this session */
+    }
+    setDismissed(true);
+  }
+  function scrollToClaim() {
+    document
+      .getElementById("claim-username")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  const tiles: { icon: typeof Send; title: string; body: string; to: View; badge?: string }[] = [
+    { icon: Send, title: "Send to @anyone", body: "Pay a person or business by username — no address to copy.", to: "send", badge: "No gas fees" },
+    { icon: Smartphone, title: "Pay bills", body: "Airtime, data, electricity & cable TV, straight from sBTC.", to: "bills" },
+    { icon: Landmark, title: "Cash out", body: "Move sBTC to Naira in your bank account.", to: "cashout" },
+    { icon: TrendingUp, title: "Earn yield", body: "Put your balance to work. Withdraw anytime.", to: "earn" },
+    { icon: QrCode, title: "Get paid", body: "Share your @name or a QR code to receive sBTC.", to: "receive" },
+  ];
+
+  const steps: { n: number; label: string; done: boolean; busy: boolean; action: () => void }[] = [
+    { n: 1, label: "Get test sBTC", done: funded, busy: busy === "faucet", action: onFaucet },
+    { n: 2, label: "Claim your @username", done: named, busy: false, action: scrollToClaim },
+    { n: 3, label: "Send your first payment", done: sent, busy: false, action: () => go("send") },
+  ];
+
+  return (
+    <section className="panel welcome">
+      <div className="welcome-head">
+        <div>
+          <span className="panel-eyebrow">Welcome to Sato</span>
+          <h2 className="welcome-title">Everything you can do, in one place</h2>
+        </div>
+        <button className="welcome-dismiss" onClick={dismiss} title="Hide this">
+          <Check size={13} /> Got it
+        </button>
+      </div>
+
+      <div className="cap-grid">
+        {tiles.map(({ icon: Icon, title, body, to, badge }) => (
+          <button className="cap-tile" key={to} onClick={() => go(to)}>
+            <span className="cap-ico">
+              <Icon size={18} />
+            </span>
+            <ArrowUpRight size={15} className="cap-arrow" />
+            <h3>{title}</h3>
+            <p>{body}</p>
+            {badge && (
+              <span className="cap-badge">
+                <Zap size={11} /> {badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="gs-row">
+        <span className="gs-lead">Get started</span>
+        {steps.map((s) => (
+          <button
+            key={s.n}
+            className={s.done ? "gs-step done" : "gs-step"}
+            onClick={s.action}
+            disabled={s.done || s.busy}
+          >
+            <span className="gs-num">{s.done ? <Check size={13} /> : s.n}</span>
+            {s.busy ? "Funding…" : s.label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Overview(props: {
   balance: bigint;
   btcUsd: number | null;
@@ -1455,6 +1562,7 @@ function Overview(props: {
   goSend: () => void;
   goReceive: () => void;
   goActivity: () => void;
+  go: (v: View) => void;
   busy: string | null;
   address: string;
   txs: SatoTx[];
@@ -1473,6 +1581,7 @@ function Overview(props: {
     goSend,
     goReceive,
     goActivity,
+    go,
     busy,
     address,
     txs,
@@ -1495,6 +1604,15 @@ function Overview(props: {
           {busy === "faucet" ? "Funding…" : "Get test sBTC"}
         </button>
       </header>
+
+      <WelcomeGuide
+        balance={balance}
+        myName={myName}
+        txCount={txs.length}
+        busy={busy}
+        onFaucet={onFaucet}
+        go={go}
+      />
 
       <BalanceHero balance={balance} btcUsd={btcUsd} events={events} />
 
@@ -1546,7 +1664,7 @@ function Overview(props: {
               </button>
             </div>
           </section>
-          <section className="panel">
+          <section className="panel" id="claim-username">
             <span className="panel-eyebrow">Your username</span>
             {myName ? (
               <div className="claimed-row">
@@ -3392,7 +3510,10 @@ const shellStyles = `
 .auth-body{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:420px;}
 .auth-eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--orange);margin-bottom:18px;}
 .auth-title{font-size:clamp(38px,5vw,52px);line-height:1.02;letter-spacing:-.055em;font-weight:700;margin:0 0 20px;}
-.auth-lede{color:var(--text-muted);font-size:15.5px;line-height:1.65;margin:0 0 30px;}
+.auth-lede{color:var(--text-muted);font-size:15.5px;line-height:1.65;margin:0 0 20px;}
+.auth-caps{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px;}
+.auth-caps span{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:999px;padding:6px 12px;}
+.auth-caps svg{color:var(--orange);}
 .auth-points{list-style:none;padding:0;margin:22px 0 0;display:flex;flex-direction:column;gap:11px;}
 .auth-points li{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--text-muted);}
 .auth-points svg{color:#2f7d54;flex-shrink:0;}
@@ -3464,6 +3585,32 @@ const shellStyles = `
 .panel{background:var(--white);border:1px solid var(--line);border-radius:18px;padding:26px;margin-bottom:16px;}
 .panel-eyebrow{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:14px;}
 .panel-lede{color:var(--text-muted);font-size:14.5px;line-height:1.6;margin:0 0 16px;}
+
+/* First-run welcome guide */
+.welcome-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px;}
+.welcome-head .panel-eyebrow{margin-bottom:6px;}
+.welcome-title{font-size:19px;font-weight:700;letter-spacing:-.02em;margin:0;}
+.welcome-dismiss{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;border:1px solid var(--line);background:var(--paper);color:var(--text-muted);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
+.welcome-dismiss:hover{color:var(--ink);background:#ecebe5;}
+.welcome-dismiss svg{color:var(--orange);}
+.cap-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(184px,1fr));gap:12px;}
+.cap-tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;font-family:var(--sans);transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;}
+.cap-tile:hover{transform:translateY(-2px);border-color:#cdd0ca;box-shadow:0 8px 22px #1620281a;}
+.cap-ico{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--white);border:1px solid var(--line);color:var(--ink);margin-bottom:12px;transition:color .14s;}
+.cap-tile:hover .cap-ico{color:var(--orange);}
+.cap-arrow{position:absolute;top:16px;right:16px;color:var(--muted);transition:color .14s,transform .18s var(--ease);}
+.cap-tile:hover .cap-arrow{color:var(--ink);transform:translate(2px,-2px);}
+.cap-tile h3{font-size:14.5px;font-weight:700;letter-spacing:-.01em;margin:0 0 4px;color:var(--ink);}
+.cap-tile p{font-size:12.5px;line-height:1.5;color:var(--text-muted);margin:0;}
+.cap-badge{display:inline-flex;align-items:center;gap:4px;margin-top:10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--navy);background:var(--mint);border-radius:999px;padding:3px 8px;}
+.gs-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:18px;padding-top:18px;border-top:1px solid var(--line);}
+.gs-lead{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-right:2px;}
+.gs-step{display:inline-flex;align-items:center;gap:9px;background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:9px 14px 9px 9px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;font-family:var(--sans);transition:transform .1s var(--ease),background .14s,border-color .14s;}
+.gs-step:not(:disabled):hover{background:#ecebe5;border-color:#cdd0ca;}
+.gs-step:disabled:not(.done){opacity:.6;cursor:default;}
+.gs-num{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;background:var(--white);border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--muted);}
+.gs-step.done{color:var(--text-muted);cursor:default;}
+.gs-step.done .gs-num{background:var(--orange);border-color:var(--orange);color:#fff;}
 
 .balance-line{display:flex;align-items:baseline;gap:8px;}
 .balance-num{font-size:46px;font-weight:700;letter-spacing:-.03em;line-height:1;}
