@@ -228,6 +228,43 @@ export async function getRecentTransactions(
   }
 }
 
+// Poll one transaction's on-chain status by id — this drives the live
+// submitted → confirming → confirmed feedback in the app. `anchored` is false
+// while a tx is mined into a microblock but not yet an anchor block, so the
+// caller can show a distinct "confirming" state. Never throws: a not-yet-
+// indexed (404) or rate-limited read comes back as pending/unknown so the
+// caller simply keeps polling instead of flashing a failure.
+export type TxState = "pending" | "success" | "failed" | "unknown";
+export async function getTxStatus(
+  txid: string
+): Promise<{ state: TxState; anchored: boolean; reason?: string }> {
+  const id = txid.startsWith("0x") ? txid : `0x${txid}`;
+  try {
+    const res = await fetch(`${API}/extended/v1/tx/${id}`);
+    if (res.status === 404) return { state: "pending", anchored: false };
+    if (!res.ok) return { state: "unknown", anchored: false };
+    const tx = await res.json();
+    const raw: string = tx?.tx_status ?? "";
+    // Anchored unless the API explicitly flags it as microblock-only, so a
+    // missing field (Nakamoto testnet has no microblocks) reads as confirmed.
+    const anchored = tx?.is_unanchored !== true;
+    if (raw.startsWith("success")) return { state: "success", anchored };
+    if (raw === "pending") return { state: "pending", anchored: false };
+    if (raw.includes("abort"))
+      return {
+        state: "failed",
+        anchored: false,
+        reason:
+          raw === "abort_by_post_condition"
+            ? "Blocked by a post-condition"
+            : "Reverted on-chain",
+      };
+    return { state: "unknown", anchored: false };
+  } catch {
+    return { state: "unknown", anchored: false };
+  }
+}
+
 // One balance-affecting event on the connected wallet's ledger, reconstructed
 // from the contract's on-chain `print` events. Positive delta = credited (a
 // faucet top-up or an incoming payment), negative = debited (an outgoing send).

@@ -55,6 +55,7 @@ import {
   NO_SPONSORED_TX,
   fundSelf,
   getRecentTransactions,
+  getTxStatus,
   getBalanceHistory,
   getEarnStats,
   earnLock,
@@ -272,6 +273,93 @@ function SatoApp() {
     }
   };
 
+  // Follow a just-submitted tx to the chain through a single live toast:
+  // submitted → confirming → confirmed (or failed on-chain). Balances refresh
+  // the moment it's mined, and every state keeps the explorer link one tap
+  // away. If we never got a txid (a wallet that doesn't return one), it falls
+  // back to a plain confirmation so the user is never left without feedback.
+  const trackTx = (
+    txid: string | undefined,
+    copy: { pending: string; confirmed: string; description?: string },
+  ) => {
+    const view = () =>
+      txid
+        ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
+        : undefined;
+    if (!txid) {
+      toast.success(copy.pending, { description: copy.description });
+      if (address) setTimeout(() => refresh(address), 4000);
+      return;
+    }
+    const id = toast.loading(copy.pending, {
+      description: "Submitted to testnet",
+      duration: Infinity,
+      action: view(),
+    });
+    let tries = 0;
+    let refreshed = false;
+    const timer = setInterval(async () => {
+      tries += 1;
+      const s = await getTxStatus(txid);
+      if (s.state === "success") {
+        // The balance moves as soon as it's mined — refresh once, even while
+        // we wait on the anchor block.
+        if (!refreshed && address) {
+          refreshed = true;
+          refresh(address);
+        }
+        if (s.anchored) {
+          clearInterval(timer);
+          toast.success(copy.confirmed, {
+            id,
+            description: copy.description,
+            duration: 7000,
+            action: view(),
+          });
+        } else if (tries >= 30) {
+          // Mined but still unanchored after ~3 min (shouldn't happen on a
+          // microblock-free testnet) — accept the success rather than spin.
+          clearInterval(timer);
+          toast.success(copy.confirmed, {
+            id,
+            description: copy.description,
+            duration: 7000,
+            action: view(),
+          });
+        } else {
+          toast.loading("Confirming…", {
+            id,
+            description: "Mined — waiting for the anchor block",
+            duration: Infinity,
+            action: view(),
+          });
+        }
+        return;
+      }
+      if (s.state === "failed") {
+        clearInterval(timer);
+        toast.error("Transaction failed on-chain", {
+          id,
+          description: s.reason,
+          duration: 9000,
+          action: view(),
+        });
+        return;
+      }
+      // pending / unknown → keep waiting, but don't spin forever (~3 min).
+      if (tries >= 30) {
+        clearInterval(timer);
+        toast.info("Still confirming", {
+          id,
+          description: "Taking longer than usual — follow it on the explorer.",
+          duration: 8000,
+          action: view(),
+        });
+        if (address) setTimeout(() => refresh(address), 2000);
+      }
+    }, 6000);
+  };
+
   useEffect(() => {
     if (address) refresh(address);
     else {
@@ -399,15 +487,12 @@ function SatoApp() {
     setBusy("register");
     try {
       const res = await registerName(name);
-      const txid = txidOf(res);
-      toast.success(`Registering @${name}`, {
-        description: txid ? "Submitted to testnet" : undefined,
-        action: txid
-          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
-          : undefined,
+      trackTx(txidOf(res), {
+        pending: `Registering @${name}`,
+        confirmed: `@${name} is yours`,
+        description: "Username registered on testnet",
       });
       setRegInput("");
-      if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
       toast.error("Registration cancelled", { description: e?.message });
     } finally {
@@ -444,15 +529,12 @@ function SatoApp() {
       if (gasless) {
         try {
           const txId = await sendSbtcSponsored(sendTo, amount);
-          toast.success(`Sent ${fmt(amount)} sats — gas covered`, {
+          trackTx(txId, {
+            pending: `Sending ${fmt(amount)} sats — gas covered`,
+            confirmed: `${fmt(amount)} sats delivered`,
             description: `to ${short(sendTo)}`,
-            action: {
-              label: "View",
-              onClick: () => window.open(explorerTx(txId)),
-            },
           });
           setSendAmount("");
-          if (address) setTimeout(() => refresh(address), 4000);
           return;
         } catch (e: any) {
           if (e?.message !== NO_SPONSORED_TX) throw e; // real failure/cancel
@@ -462,15 +544,12 @@ function SatoApp() {
         }
       }
       const res = await sendSbtc(sendTo, amount);
-      const txid = txidOf(res);
-      toast.success(`Sending ${fmt(amount)} sats`, {
+      trackTx(txidOf(res), {
+        pending: `Sending ${fmt(amount)} sats`,
+        confirmed: `${fmt(amount)} sats delivered`,
         description: `to ${short(sendTo)}`,
-        action: txid
-          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
-          : undefined,
       });
       setSendAmount("");
-      if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
       toast.error("Send cancelled", { description: e?.message });
     } finally {
@@ -482,14 +561,11 @@ function SatoApp() {
     setBusy("faucet");
     try {
       const res = await fundSelf(1_000_000n);
-      const txid = txidOf(res);
-      toast.success("Funding 1,000,000 sats", {
+      trackTx(txidOf(res), {
+        pending: "Funding 1,000,000 sats",
+        confirmed: "1,000,000 sats added",
         description: "testnet faucet",
-        action: txid
-          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
-          : undefined,
       });
-      if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
       toast.error("Faucet cancelled", { description: e?.message });
     } finally {
@@ -504,15 +580,12 @@ function SatoApp() {
     setBusy("earn-lock");
     try {
       const res = await earnLock(amount, term);
-      const txid = txidOf(res);
-      toast.success(`Locking ${fmt(amount)} sats`, {
-        description: `${fmt(term)} blocks at the boost rate`,
-        action: txid
-          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
-          : undefined,
+      trackTx(txidOf(res), {
+        pending: `Locking ${fmt(amount)} sats`,
+        confirmed: `${fmt(amount)} sats locked at the boost rate`,
+        description: `${fmt(term)} blocks`,
       });
       setEarnAmount("");
-      if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
       toast.error("Lock cancelled", { description: e?.message });
     } finally {
@@ -524,14 +597,11 @@ function SatoApp() {
     setBusy("earn-claim");
     try {
       const res = await earnClaim();
-      const txid = txidOf(res);
-      toast.success("Claiming your lock", {
-        description: "principal + boost yield back to your balance",
-        action: txid
-          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
-          : undefined,
+      trackTx(txidOf(res), {
+        pending: "Claiming your lock",
+        confirmed: "Lock claimed — funds back in your balance",
+        description: "principal + boost yield",
       });
-      if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
       toast.error("Claim cancelled", { description: e?.message });
     } finally {
@@ -543,14 +613,11 @@ function SatoApp() {
     setBusy("earn-fund");
     try {
       const res = await fundEarn(1_000_000n);
-      const txid = txidOf(res);
-      toast.success("Funding 1,000,000 sats", {
+      trackTx(txidOf(res), {
+        pending: "Funding 1,000,000 sats",
+        confirmed: "1,000,000 sats added to Earn",
         description: "to your Earn balance",
-        action: txid
-          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
-          : undefined,
       });
-      if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
       toast.error("Faucet cancelled", { description: e?.message });
     } finally {
@@ -566,15 +633,12 @@ function SatoApp() {
     setBusy("topup");
     try {
       const res = await sponsorTopUp(micro);
-      const txid = txidOf(res);
-      toast.success(`Adding ${topUpAmount} STX to the gas pool`, {
+      trackTx(txidOf(res), {
+        pending: `Adding ${topUpAmount} STX to the gas pool`,
+        confirmed: `${topUpAmount} STX added to the gas pool`,
         description: "covers transaction fees for everyone",
-        action: txid
-          ? { label: "View", onClick: () => window.open(explorerTx(txid)) }
-          : undefined,
       });
       setTopUpAmount("");
-      if (address) setTimeout(() => refresh(address), 4000);
     } catch (e: any) {
       toast.error("Top-up cancelled", { description: e?.message });
     } finally {
