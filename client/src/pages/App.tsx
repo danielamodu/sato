@@ -1288,7 +1288,7 @@ function BalanceHero({
   const up = (pct ?? 0) >= 0;
 
   return (
-    <section className="balance-hero">
+    <section className="balance-hero bh-dark">
       <div className="bh-top">
         <div>
           <span className="bh-eyebrow">Total balance</span>
@@ -3744,6 +3744,23 @@ const shellStyles = `
   .bchart-line{stroke-dasharray:1;stroke-dashoffset:1;animation:bdraw 1.05s var(--ease) .05s forwards;}
 }
 @keyframes bdraw{to{stroke-dashoffset:0;}}
+
+/* Bold focal balance hero: a dark, dimensional card that mirrors the landing
+   product mockup. This is a single accent card, not an app-wide dark theme. */
+.balance-hero.bh-dark{background:radial-gradient(120% 140% at 85% -10%,#22303f 0%,#131c28 46%,#0d1117 100%);border-color:#26313f;color:#fff;padding:26px 28px 14px;box-shadow:0 24px 50px -18px rgba(13,17,23,.55),0 2px 6px -2px rgba(13,17,23,.35);}
+.balance-hero.bh-dark .bh-eyebrow{color:#93a0b0;}
+.balance-hero.bh-dark .bh-num{color:#fff;font-size:54px;}
+.balance-hero.bh-dark .bh-num small{color:#93a0b0;}
+.balance-hero.bh-dark .bh-sub{color:#8a97a6;}
+.balance-hero.bh-dark .bh-trend.up{background:#153726;color:#7fd6a3;}
+.balance-hero.bh-dark .bh-trend.down{background:#3a1c17;color:#f3a08c;}
+.balance-hero.bh-dark .bh-empty{border-color:#2a3543;color:#8a97a6;}
+.balance-hero.bh-dark .bchart-line{stroke:#eef2f6;}
+.balance-hero.bh-dark .bchart-area{fill:rgba(255,255,255,.09);}
+.balance-hero.bh-dark .bchart-svg circle{stroke:#131c28;}
+.balance-hero.bh-dark .bchart-foot{color:#8a97a6;}
+.balance-hero.bh-dark .bchart-foot span:first-child{color:#e7ecf1;}
+@media(max-width:640px){.balance-hero.bh-dark .bh-num{font-size:38px;}}
 
 .claimed-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
 .claimed-badge{display:inline-flex;align-items:center;gap:6px;background:#f0f7f3;color:#2f7d54;border:1px solid #cfe8db;padding:8px 14px;border-radius:999px;font-weight:700;font-size:15px;}
