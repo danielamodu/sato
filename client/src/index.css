@@ -78,3 +78,33 @@ html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}button,a{touch-action:
 .consent-actions button{flex:1;padding:10px 12px;font-size:.58rem;min-height:40px}
 @media(max-width:800px){.consent-banner{left:12px;right:12px;bottom:84px;width:auto;max-width:none}}
 @media(max-width:560px){.consent-banner{bottom:82px;padding:13px;gap:11px}.consent-copy strong{font-size:.7rem}.consent-copy p{-webkit-line-clamp:2}.consent-links{display:none}}
+
+/* ============ Bolder landing: confident oversized hero + heavier display type (supersedes earlier hero sizing) ============ */
+.hero{grid-template-columns:minmax(0,1fr) minmax(500px,1.02fr);gap:clamp(2rem,5vw,5.5rem);align-items:center}
+.hero-copy{max-width:620px}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:9px;padding:8px 15px 8px 13px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font:700 .7rem var(--sans);letter-spacing:.005em;margin-bottom:1.7rem;box-shadow:var(--elev-1)}
+.hero-eyebrow-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 4px #f15a2426;animation:eyebrow-pulse 2.6s var(--ease) infinite}
+@keyframes eyebrow-pulse{0%,100%{box-shadow:0 0 0 4px #f15a2426}50%{box-shadow:0 0 0 8px #f15a240d}}
+.hero h1{font-size:clamp(4rem,6.9vw,8rem);line-height:.92;letter-spacing:-.055em;font-weight:800;margin:0 0 1.9rem}
+.hero h1 span{color:var(--ink)}
+.hero h1 .accent{position:relative;color:var(--ink);white-space:nowrap}
+.hero h1 .accent:after{content:"";position:absolute;left:.02em;right:.03em;bottom:.045em;height:.085em;border-radius:999px;background:var(--orange);transform:scaleX(0);transform-origin:left;animation:accent-underline .75s var(--ease) .55s forwards}
+@keyframes accent-underline{to{transform:scaleX(1)}}
+.hero-lede{font-size:1.06rem;max-width:480px;color:#5a636f}
+.hero-actions{gap:1.7rem;margin-top:.3rem}
+.hero-actions .primary-button{padding:18px 20px 18px 24px;font-size:.82rem;border-radius:12px;gap:34px;box-shadow:0 12px 26px #0d111726}
+.hero-actions .primary-button svg{width:19px;height:19px}
+/* heavier, more confident section display type */
+.section-heading h2,.steps-heading h2,.trust-heading h2,.waitlist-section h2{font-weight:800}
+.section-kicker,.proof-kicker,.feature-index{font-weight:700}
+/* proof strip reads as a bold statement band */
+.proof-strip{background:var(--ink)}
+.proof-strip>div{border-right-color:#26313f}
+.proof-strip>div:first-child{border-left-color:#26313f}
+.proof-strip strong{color:#fff;font-size:.82rem}
+.proof-strip small{color:#93a0b0}
+.proof-kicker{color:var(--orange);font-size:1.25rem;line-height:1}
+.feature-card h3{font-size:1.22rem;font-weight:800}
+@media(max-width:1050px){.hero{grid-template-columns:1fr}}
+@media(max-width:560px){.hero h1{font-size:clamp(2.85rem,12.5vw,3.6rem)}.hero-eyebrow{font-size:.62rem;margin-bottom:1.1rem}.hero-lede{font-size:.86rem}}
+@media(prefers-reduced-motion:reduce){.hero-eyebrow-dot{animation:none}.hero h1 .accent:after{animation:none;transform:scaleX(1)}}
