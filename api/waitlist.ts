@@ -128,7 +128,7 @@ export default async function handler(req: Request, res: Response) {
       to: [OWNER_EMAIL],
       reply_to: email,
       subject: `New Sato ${audience} waitlist signup`,
-      text: `New Sato waitlist signup\n\nAudience: ${audience}\nEmail: ${email}\nSource: satofinance.vercel.app`,
+      text: `New Sato waitlist signup\n\nAudience: ${audience}\nEmail: ${email}\nSource: satoxbt.com`,
       html: `<div style="font-family:Arial,sans-serif;max-width:560px;padding:28px;background:#f5f4ef;color:#111925"><div style="background:#111925;color:#fff;border-radius:16px;padding:28px"><p style="color:#ff8d66;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Sato waitlist</p><h1 style="font-size:28px;margin:10px 0 22px">New ${audience} signup.</h1><p style="color:#b8c2ce;line-height:1.6">Someone joined the ${audience} waitlist from the Sato landing page.</p><div style="border:1px solid #344354;border-radius:10px;padding:16px;margin-top:22px"><p style="margin:0 0 8px;color:#8d9aaa;font-size:12px">EMAIL</p><strong style="font-size:18px">${safeEmail}</strong></div></div></div>`,
     }),
   });

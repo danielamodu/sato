@@ -22,7 +22,7 @@ Built on Stacks. Powered by sBTC.
 🔨 Active development — building in public.
 
 **Phase 1 — On-chain foundation (shipped, live on testnet)**
-- [x] Landing page — satofinance.vercel.app
+- [x] Landing page — satoxbt.com
 - [x] `sato-transfer` — sBTC transfer contract (send, balances, events)
 - [x] `sato-names` — username registry (register, resolve, reverse lookup, transfer)
 - [x] `sato-sponsor` — sponsored-tx pool with windowed per-user caps
@@ -89,7 +89,7 @@ MIT — see [LICENSE](LICENSE). Sato is open source.
 
 ## Get early access
 
-satofinance.vercel.app
+satoxbt.com
 
 ---
 

@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /app
 
-Sitemap: https://satofinance.vercel.app/sitemap.xml
+Sitemap: https://satoxbt.com/sitemap.xml
