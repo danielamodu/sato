@@ -667,7 +667,7 @@ function SatoApp() {
               <span className="brand-name">sato</span>
               <span className="brand-badge">testnet</span>
             </span>
-            <a className="auth-back" href="/">
+            <a className="auth-back" href="https://satoxbt.com">
               Back to site
             </a>
           </div>
