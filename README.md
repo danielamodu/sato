@@ -10,10 +10,10 @@ no gas complexity, no crypto knowledge required.
 ## What we're building
 
 - **Send by @username** — no wallet addresses, just @username and done
-- **Earn on your balance** — idle sBTC earns yield automatically via sBTC/PoX integration
-- **Cash out anytime** — withdraw to local currency via Yellow Card API
+- **Earn on your balance** — idle sBTC earns yield automatically
+- **Cash out anytime** — withdraw to local currency (Naira) and pay bills
 - **Sponsored transactions** — users never touch gas fees
-- **Social login** — sign in with Google or X, wallet created in the background
+- **Embedded wallet** — a key is created and secured on-device, no seed phrase to manage
 
 Built on Stacks. Powered by sBTC.
 
@@ -26,27 +26,28 @@ Built on Stacks. Powered by sBTC.
 - [x] `sato-transfer` — sBTC transfer contract (send, balances, events)
 - [x] `sato-names` — username registry (register, resolve, reverse lookup, transfer)
 - [x] `sato-sponsor` — sponsored-tx pool with windowed per-user caps
-- [x] Full test suite (38 tests) + deployed & verified on Stacks testnet
+- [x] Full test suite (99 tests) + deployed & verified on Stacks testnet
 
-**Phase 2 — Product integration (next / grant-funded)**
-- [ ] Wallet connect + end-to-end dapp flow (register → resolve → send)
-- [ ] Swap `sato-transfer` ledger for the canonical sBTC SIP-010 contract
-- [ ] Yield on balance via sBTC/PoX integration
-- [ ] Social login with embedded wallets (Privy)
+**Phase 2 — Product integration (shipped, live on testnet)**
+- [x] Wallet connect + end-to-end dapp flow (register → resolve → send)
+- [x] Gasless sends via the `sato-sponsor` co-signer (users never touch gas)
+- [x] Yield on balance via `sato-yield-v2` (per-block accrual, wallet round-trip)
+- [x] Cash out sBTC → Naira and pay Nigerian bills (VTPass) — payment-gated APIs
 
-**Phase 3 — Mobile & fiat (later)**
-- [ ] React Native mobile app (iOS + Android)
-- [ ] Yellow Card API integration (Naira onramp/offramp)
+**Phase 3 — Mobile & fiat (in progress)**
+- [x] React Native (Expo) app with on-device embedded wallet, gasless onboarding
+- [ ] Swap internal ledger for the canonical sBTC SIP-010 contract on mainnet
+- [ ] Yellow Card API integration (Naira onramp/offramp) + KYC
 - [ ] iOS and Android launch
 
 ## Tech stack
 
 - **Contracts** — Clarity on Stacks
-- **Mobile** — React Native (iOS + Android)
-- **Auth** — Privy (embedded wallets + social login)
-- **Identity** — Stacks Name Service (SNS)
-- **Onramp/Offramp** — Yellow Card API
-- **Backend** — Node.js + Supabase
+- **Mobile** — React Native (Expo, iOS + Android)
+- **Auth** — Stacks Connect (web) · on-device embedded wallet via `expo-secure-store` (mobile)
+- **Identity** — `sato-names` on-chain username registry
+- **Onramp/Offramp** — Yellow Card API (planned)
+- **Backend** — Node.js serverless (Vercel) + Supabase
 
 ## Contracts
 
@@ -80,7 +81,7 @@ Deployer: `ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV`
 
 ```bash
 npm install
-npm test        # runs the Clarity test suite (69 tests) via Clarinet + Vitest
+npm test        # runs the Clarity test suite (99 tests) via Clarinet + Vitest
 ```
 
 ## License
