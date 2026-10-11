@@ -2,6 +2,14 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "dist/public",
   "framework": "vite",
+  "redirects": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "testnet.satoxbt.com" }],
+      "destination": "/app",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     { "source": "/app", "destination": "/index.html" },
     { "source": "/people", "destination": "/index.html" },

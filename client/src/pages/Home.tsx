@@ -91,7 +91,7 @@ export default function Home() {
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span><span className="brand-name">sato</span></a>
         <nav className="top-links" aria-label="Audience navigation">
-          <a href="/people">For people</a><a href="/businesses">For businesses</a><a href="/app">Testnet app</a><a className="top-login" href="mailto:team.satofinance@gmail.com">Contact</a><a className="top-signup" href="#waitlist">Sign up <ArrowUpRight size={13} /></a>
+          <a href="/people">For people</a><a href="/businesses">For businesses</a><a href="https://testnet.satoxbt.com/app">Testnet app</a><a className="top-login" href="mailto:team.satofinance@gmail.com">Contact</a><a className="top-signup" href="#waitlist">Sign up <ArrowUpRight size={13} /></a>
         </nav>
         <button className="menu-toggle" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={19} /> : <Menu size={19} />}</button>
       </header>
@@ -104,7 +104,7 @@ export default function Home() {
             <span className="hero-eyebrow"><span className="hero-eyebrow-dot" />Built on Bitcoin · Live testnet app</span>
             <h1>Bitcoin payments<br />that feel <span className="accent">human</span>.</h1>
             <p className="hero-lede">Send to <strong>@anyone</strong>, earn on your balance, and cash out to your local currency. Sato puts everyday money movement in one simple place.</p>
-            <div className="hero-actions"><a className="primary-button" href="#waitlist">Get early access <ArrowRight size={17} /></a><a className="text-link" href="/app">Try the live testnet app <ArrowUpRight size={15} /></a><a className="text-link" href="#why-sato">See how it works <ChevronRight size={15} /></a></div>
+            <div className="hero-actions"><a className="primary-button" href="#waitlist">Get early access <ArrowRight size={17} /></a><a className="text-link" href="https://testnet.satoxbt.com/app">Try the live testnet app <ArrowUpRight size={15} /></a><a className="text-link" href="#why-sato">See how it works <ChevronRight size={15} /></a></div>
           </div>
 
           <div className="product-stage reveal reveal-two" aria-label="Illustrative Sato product preview">
