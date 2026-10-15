@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import {
   ArrowLeftRight,
   ArrowRight,
@@ -58,8 +58,7 @@ function useWaitlist(audience: string) {
   return { email, setEmail, company, setCompany, submitted, sending, error, submit };
 }
 
-/* ---------- scroll reveal ---------- */
-function useIrisReveal() {
+/* ---------- scroll reveal ---------- */function useIrisReveal() {
   useEffect(() => {
     const els = Array.from(document.querySelectorAll<HTMLElement>(".iris-reveal"));
     if (!("IntersectionObserver" in window)) {
@@ -75,6 +74,91 @@ function useIrisReveal() {
     els.forEach((el) => io.observe(el));
     return () => io.disconnect();
   }, []);
+}
+
+/* ---------- animated counter (counts up when scrolled into view) ---------- */
+function CountUp({ to, duration = 1400 }: { to: number; duration?: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [val, setVal] = useState(0);
+  const started = useRef(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([en]) => {
+      if (en.isIntersecting && !started.current) {
+        started.current = true;
+        const t0 = performance.now();
+        const tick = (t: number) => {
+          const p = Math.min(1, (t - t0) / duration);
+          setVal(Math.round(to * (1 - Math.pow(1 - p, 3))));
+          if (p < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+        io.disconnect();
+      }
+    }, { threshold: 0.5 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [to, duration]);
+  return <span ref={ref}>{val.toLocaleString()}</span>;
+}
+
+type LiveTarget = { currentTarget: HTMLElement; clientX: number; clientY: number };
+
+/* ---------- 3D tilt props for cards (fine pointers only) ---------- */
+function useTilt(max = 7) {
+  const reduceMotion = useReducedMotion();
+  const fine = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(pointer:fine)").matches,
+    [],
+  );
+  const active = !reduceMotion && fine;
+  return useMemo(() => {
+    if (!active) return {};
+    return {
+      onMouseMove: (e: LiveTarget) => {
+        const el = e.currentTarget;
+        const r = el.getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width - 0.5;
+        const py = (e.clientY - r.top) / r.height - 0.5;
+        el.style.transition = "transform .12s ease-out";
+        el.style.transform = `perspective(900px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg) translateY(-4px)`;
+      },
+      onMouseLeave: (e: LiveTarget) => {
+        const el = e.currentTarget;
+        el.style.transition = "transform .55s cubic-bezier(.23,1,.32,1)";
+        el.style.transform = "";
+      },
+    };
+  }, [active, max]);
+}
+
+/* ---------- magnetic pull for primary CTAs (fine pointers only) ---------- */
+function useMagnetic(strength = 6) {
+  const reduceMotion = useReducedMotion();
+  const fine = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(pointer:fine)").matches,
+    [],
+  );
+  const active = !reduceMotion && fine;
+  return useMemo(() => {
+    if (!active) return {};
+    return {
+      onMouseMove: (e: LiveTarget) => {
+        const el = e.currentTarget;
+        const r = (el as HTMLElement).getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width - 0.5;
+        const py = (e.clientY - r.top) / r.height - 0.5;
+        (el as HTMLElement).style.transition = "transform .12s ease-out";
+        (el as HTMLElement).style.transform = `translate(${(px * strength * 2).toFixed(1)}px, ${(py * strength * 2).toFixed(1)}px)`;
+      },
+      onMouseLeave: (e: LiveTarget) => {
+        const el2 = e.currentTarget as HTMLElement;
+        el2.style.transition = "transform .45s cubic-bezier(.23,1,.32,1)";
+        el2.style.transform = "";
+      },
+    };
+  }, [active, strength]);
 }
 
 /* ---------- carousel data ---------- */
@@ -165,8 +249,19 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
   const [slide, setSlide] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [burstId, setBurstId] = useState(0);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
+  const orbitRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<HTMLElement>(null);
+  const tilt = useTilt(7);
+  const magnet = useMagnetic(5);
+  const { scrollYProgress } = useScroll();
+  const { scrollYProgress: heroProgress } = useScroll({
+    target: heroRef,
+    offset: ["start start", "end start"],
+  });
 
   const heroWait = useWaitlist("people");
   const ctaWait = useWaitlist("people");
@@ -195,8 +290,34 @@ export default function Home() {
   function reviewSend() {
     if (sendState !== "idle") return;
     setSendState("sending");
-    window.setTimeout(() => setSendState("done"), 1400);
+    window.setTimeout(() => {
+      setSendState("done");
+      setBurstId((b) => b + 1);
+    }, 1400);
   }
+  const burstParts = useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, i) => {
+        const a = (i / 14) * Math.PI * 2 + Math.random() * 0.5;
+        const d = 46 + Math.random() * 54;
+        return {
+          x: Math.cos(a) * d,
+          y: Math.sin(a) * d - 20,
+          c: ["#f15a24", "#1d7a4c", "#111925", "#2e6bf0"][i % 4],
+          s: 5 + (i % 3) * 2,
+          r: (i * 47) % 180,
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [burstId],
+  );
+
+  /* autoplay the how-it-works carousel (pauses on hover) */
+  useEffect(() => {
+    if (reduce || paused) return;
+    const t = window.setInterval(() => setSlide((s) => (s + 1) % slides.length), 5500);
+    return () => window.clearInterval(t);
+  }, [reduce, paused, slide]);
 
   /* earn ticker (illustrative) */
   const [earnBal, setEarnBal] = useState(2480.65);
@@ -207,11 +328,15 @@ export default function Home() {
   }, [reduce]);
 
   const active = slides[slide];
+  const cloudA = useTransform(heroProgress, [0, 1], [0, 60]);
+  const cloudB = useTransform(heroProgress, [0, 1], [0, 110]);
+  const phoneSink = useTransform(heroProgress, [0, 1], [0, -70]);
 
   return (
     <div className="iris-page">
       {/* ---------- floating nav ---------- */}
       <div className="iris-navwrap">
+        <motion.span className="iris-progress" style={{ scaleX: scrollYProgress }} aria-hidden="true" />
         <nav className={scrolled ? "iris-nav scrolled" : "iris-nav"} aria-label="Main">
           <a className="iris-nav-brand" href="#top">
             <span className="iris-nav-mark"><img src={logoSrc} alt="" /></span><span className="iris-nav-word">sato</span>
@@ -244,7 +369,7 @@ export default function Home() {
           <button className="iris-burger" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>
             {menuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <a className="iris-btn iris-btn-dark iris-nav-cta" href="#get">Get early access <ArrowRight size={15} /></a>
+          <a className="iris-btn iris-btn-dark iris-nav-cta" href="#get" {...magnet}>Get early access <ArrowRight size={15} /></a>
         </nav>
       </div>
 
@@ -252,13 +377,16 @@ export default function Home() {
       <header
         className="iris-hero"
         id="top"
+        ref={heroRef}
         onMouseMove={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setMouse({ x: (e.clientX - r.left) / r.width - 0.5, y: (e.clientY - r.top) / r.height - 0.5 });
         }}
       >
         <div className="iris-clouds" aria-hidden="true">
-          <i className="iris-cloud c1" /><i className="iris-cloud c2" /><i className="iris-cloud c3" /><i className="iris-cloud c4" /><i className="iris-cloud c5" />
+          <motion.i className="iris-cloud c1" style={reduce ? undefined : { y: cloudA }} />
+          <motion.i className="iris-cloud c2" style={reduce ? undefined : { y: cloudB }} />
+          <i className="iris-cloud c3" /><i className="iris-cloud c4" /><i className="iris-cloud c5" />
         </div>
         <div className="iris-hero-inner">
           <motion.span
@@ -267,11 +395,20 @@ export default function Home() {
           >
             Built on Bitcoin · Powered by Stacks
           </motion.span>
-          <motion.h1
-            initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.08 }}
-          >
-            Bitcoin money<br />that feels <em>human.</em>
-          </motion.h1>
+          <h1 aria-label="Bitcoin money that feels human.">
+            {(["Bitcoin money", "that feels human."] as const).map((line, i) => (
+              <span className="iris-line" aria-hidden="true" key={line}>
+                <motion.span
+                  className="iris-line-in"
+                  initial={reduce ? { y: 0 } : { y: "112%" }}
+                  animate={{ y: 0 }}
+                  transition={{ duration: 0.9, delay: 0.08 + i * 0.1, ease: [0.23, 1, 0.32, 1] }}
+                >
+                  {line}
+                </motion.span>
+              </span>
+            ))}
+          </h1>
           <motion.p
             className="iris-hero-sub"
             initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.18 }}
@@ -283,8 +420,8 @@ export default function Home() {
             className="iris-hero-ctas"
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.28 }}
           >
-            <a className="iris-btn iris-btn-dark" href="#get">Get early access <ArrowRight size={16} /></a>
-            <a className="iris-btn iris-btn-light" href="https://testnet.satoxbt.com/app">Try the testnet app <ArrowUpRight size={16} /></a>
+            <a className="iris-btn iris-btn-dark" href="#get" {...magnet}>Get early access <ArrowRight size={16} /></a>
+            <a className="iris-btn iris-btn-light" href="https://testnet.satoxbt.com/app" {...magnet}>Try the testnet app <ArrowUpRight size={16} /></a>
           </motion.div>
           <div className="iris-microcopy">Free to join · One useful email · No noise</div>
           <div className="iris-waitrow">
@@ -294,7 +431,7 @@ export default function Home() {
               <span style={{ background: "#111925" }}>JK</span>
               <span style={{ background: "#2e6bf0" }}>+</span>
             </span>
-            <span>2,400+ on the waitlist</span>
+            <span>{reduce ? "2,400" : <CountUp to={2400} />}+ on the waitlist</span>
             <button
               className="iris-share"
               onClick={() => {
@@ -309,7 +446,7 @@ export default function Home() {
         </div>
 
         {/* phones */}
-        <div className="iris-phones">
+        <motion.div className="iris-phones" style={reduce ? undefined : { y: phoneSink }}>
           <motion.div
             className="iris-phone left"
             animate={reduce ? undefined : { y: [0, -10, 0] }}
@@ -341,11 +478,25 @@ export default function Home() {
                   {sendState === "done" ? (
                     <motion.div
                       key="done" className="iris-receipt"
+                      style={{ position: "relative" }}
                       initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
                     >
                       <span className="ri"><Check size={15} color="#fff" /></span>
                       <span><strong>Sent to {to || "@amani"}</strong><small>Receipt saved · preview</small></span>
                       <b>{satAmt.toFixed(3)} ₿</b>
+                      {!reduce && (
+                        <span className="iris-burst" key={burstId} aria-hidden="true">
+                          {burstParts.map((p, i) => (
+                            <motion.i
+                              key={i}
+                              initial={{ x: 0, y: 0, opacity: 1, rotate: 0, scale: 1 }}
+                              animate={{ x: p.x, y: p.y, opacity: 0, rotate: p.r, scale: 0.6 }}
+                              transition={{ duration: 0.9, ease: "easeOut" }}
+                              style={{ background: p.c, width: p.s, height: p.s }}
+                            />
+                          ))}
+                        </span>
+                      )}
                     </motion.div>
                   ) : (
                     <motion.button
@@ -403,11 +554,15 @@ export default function Home() {
               </div>
             </div>
           </motion.div>
-        </div>
+        </motion.div>
       </header>
 
       {/* ---------- how it works ---------- */}
-      <section className="iris-section iris-how" id="how">
+      <section
+        className="iris-section iris-how" id="how"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
         <div className="iris-reveal">
           <span className="iris-eyebrow"><Zap size={13} /> How it works</span>
           <AnimatePresence mode="wait">
@@ -425,6 +580,16 @@ export default function Home() {
               ))}
             </span>
           </div>
+          {!reduce && (
+            <span className="iris-auto" aria-hidden="true">
+              <motion.i
+                key={slide + (paused ? "-p" : "-r")}
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: paused ? 0 : 1 }}
+                transition={paused ? { duration: 0.2 } : { duration: 5.5, ease: "linear" }}
+              />
+            </span>
+          )}
         </div>
         <div className="iris-reveal">
           <AnimatePresence mode="wait">
@@ -436,7 +601,15 @@ export default function Home() {
               transition={{ duration: 0.45, ease: [0.23, 1, 0.32, 1] }}
             >
               <span className="iris-step-tag">0{slide + 1} / 03 · {active.pill.toUpperCase()}</span>
-              <div className="iris-glass">
+              <div
+                className="iris-glass"
+                onMouseMove={(e) => {
+                  const el = e.currentTarget;
+                  const r = el.getBoundingClientRect();
+                  el.style.setProperty("--gx", `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`);
+                  el.style.setProperty("--gy", `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%`);
+                }}
+              >
                 <div className="iris-conn-row">
                   <span className="iris-conn-ic" style={{ background: "#0d1117" }}>{active.conn[0].slice(0, 2)}</span>
                   <span className="iris-conn-link" />
@@ -465,22 +638,29 @@ export default function Home() {
 
       {/* ---------- integrations arc ---------- */}
       <section className="iris-section iris-arc" id="flow">
-        <div className="iris-orbit" aria-hidden="true">
+        <div className="iris-orbit" ref={orbitRef} aria-hidden="true">
           {orbs.map((o, i) => {
             const angle = Math.PI - (i / (orbs.length - 1)) * Math.PI;
             const left = 50 + 43 * Math.cos(angle);
             const top = 92 - 78 * Math.sin(angle);
             return (
-              <motion.span
-                key={o.label}
-                className="iris-orb"
-                style={{ left: `${left}%`, top: `${top}%`, width: o.size, height: o.size, background: o.bg, borderColor: "transparent" }}
-                animate={reduce ? undefined : { y: [0, -9, 0] }}
-                transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
-              >
-                <o.icon size={22} color="#fff" />
-                <span className="tip">{o.label}</span>
-              </motion.span>
+              <span key={o.label} className="iris-orb-pos" style={{ left: `${left}%`, top: `${top}%` }}>
+                <motion.span
+                  className="iris-orb"
+                  style={{ width: o.size, height: o.size, background: o.bg, borderColor: "transparent" }}
+                  animate={reduce || isMobile ? undefined : { y: [0, -9, 0] }}
+                  transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
+                  drag={!reduce && !isMobile}
+                  dragConstraints={orbitRef}
+                  dragElastic={0.35}
+                  dragMomentum={false}
+                  whileHover={reduce ? undefined : { scale: 1.12 }}
+                  whileDrag={{ scale: 1.25, zIndex: 6 }}
+                >
+                  <o.icon size={22} color="#fff" />
+                  <span className="tip">{o.label}</span>
+                </motion.span>
+              </span>
             );
           })}
         </div>
@@ -491,7 +671,8 @@ export default function Home() {
             Bitcoin in, friends paid, balance earning, money back at your bank.
             Sato connects the pieces so you never touch an address or a second app.
           </p>
-          <a className="iris-btn iris-btn-dark" href="#get">Start with Sato <ArrowRight size={16} /></a>
+          <a className="iris-btn iris-btn-dark" href="#get" {...magnet}>Start with Sato <ArrowRight size={16} /></a>
+          <p className="iris-drag-hint">Psst — grab a bubble.</p>
         </div>
       </section>
 
@@ -509,7 +690,7 @@ export default function Home() {
           </div>
         </div>
         <div className="iris-bento-grid">
-          <div className="iris-card peach tall iris-reveal">
+          <div className="iris-card peach tall iris-reveal" {...tilt}>
             <span className="iris-tag">Send</span>
             <span className="iris-ic"><AtSign size={18} /></span>
             <h3>Send to @anyone in seconds.</h3>
@@ -523,20 +704,20 @@ export default function Home() {
             </div>
           </div>
           <div className="iris-col-stack">
-            <div className="iris-card iris-reveal">
+            <div className="iris-card iris-reveal" {...tilt}>
               <span className="iris-tag">Clarity</span>
               <span className="iris-ic"><Receipt size={18} /></span>
               <h3 style={{ fontSize: 22 }}>Costs before confirm.</h3>
               <p>Fee, rate lock, arrival window. Nothing buried.</p>
             </div>
-            <div className="iris-card iris-reveal">
+            <div className="iris-card iris-reveal" {...tilt}>
               <span className="iris-tag">Receipts</span>
               <span className="iris-ic"><Check size={18} /></span>
               <h3 style={{ fontSize: 22 }}>Both sides see done.</h3>
               <p>Sender and merchant share one clear confirmation.</p>
             </div>
           </div>
-          <div className="iris-card black tall iris-reveal">
+          <div className="iris-card black tall iris-reveal" {...tilt}>
             <span className="iris-tag">Earn · Preview</span>
             <span className="iris-ic"><PiggyBank size={18} /></span>
             <h3>Balance that works while it sits.</h3>
@@ -548,25 +729,16 @@ export default function Home() {
           </div>
         </div>
         <div className="iris-bento-bottom">
-          <div className="iris-card iris-card-row iris-reveal">
+          <div className="iris-card iris-card-row iris-reveal" {...tilt}>
             <span className="iris-ic"><Banknote size={18} /></span>
             <div><span className="iris-tag">Cash out</span><h3 style={{ fontSize: 22, marginTop: 10 }}>Back to your bank.</h3><p style={{ margin: 0 }}>Local currency, stated timing, on your terms.</p></div>
           </div>
-          <div className="iris-card iris-card-row iris-reveal">
+          <div className="iris-card iris-card-row iris-reveal" {...tilt}>
             <span className="iris-ic"><ShieldCheck size={18} /></span>
             <div><span className="iris-tag">Foundation</span><h3 style={{ fontSize: 22, marginTop: 10 }}>Built on Bitcoin.</h3><p style={{ margin: 0 }}>Powered by Stacks · sBTC · visible status, always.</p></div>
           </div>
         </div>
       </section>
-
-      {/* ---------- marquee ---------- */}
-      <div className="iris-marquee" aria-hidden="true">
-        <div className="iris-marquee-track">
-          {[0, 1].map((k) => (
-            <span key={k}>SEND <b>✦</b> EARN <b>✦</b> CASH OUT <b>✦</b> NO ADDRESSES <b>✦</b> FEES UPFRONT <b>✦</b> RECEIPTS <b>✦</b> BUILT ON BITCOIN <b>✦</b>&nbsp;</span>
-          ))}
-        </div>
-      </div>
 
       {/* ---------- faq ---------- */}
       <section className="iris-section iris-faq" id="faq">
@@ -654,7 +826,7 @@ export default function Home() {
           <span><a href="/privacy" style={{ color: "inherit" }}>Privacy</a> · <a href="/terms" style={{ color: "inherit" }}>Terms</a></span>
           <a href="#top" style={{ color: "inherit" }}>Back to top ↑</a>
         </div>
-        <div className="iris-wordmark" aria-hidden="true">sato</div>
+        <div className="iris-wordmark iris-reveal" aria-hidden="true">sato</div>
       </footer>
     </div>
   );
