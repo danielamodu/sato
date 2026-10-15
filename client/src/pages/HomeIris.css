@@ -156,7 +156,10 @@
 .iris-balance-card .pos { color: var(--iris-mint); font-weight: 800; }
 .iris-spark { margin-top: 10px; color: var(--iris-mint); }
 .iris-chip-row { display: flex; gap: 8px; }
-.iris-chip { flex: 1; background: #fff; border: 1px solid var(--iris-line); border-radius: 12px; padding: 10px; text-align: center; }
+.iris-chip { flex: 1; background: #fff; border: 1px solid var(--iris-line); border-radius: 12px; padding: 10px; text-align: center; font-family: var(--iris-sans); cursor: pointer; transition: background .2s ease, color .2s ease, border-color .2s ease, transform .15s var(--iris-ease); }
+.iris-chip:hover { transform: translateY(-2px); }
+.iris-chip.active { background: var(--iris-ink); border-color: var(--iris-ink); color: #fff; }
+.iris-chip.active small { color: #93a0b0; }
 .iris-chip b { display: block; font-size: 13px; }
 .iris-chip small { font-size: 10px; color: var(--iris-grey); font-weight: 700; }
 .iris-txn { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--iris-line); border-radius: 12px; padding: 10px 12px; }
@@ -232,7 +235,15 @@
 .iris-card-mock { margin-top: auto; }
 .iris-bento-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
 .iris-col-stack { display: grid; grid-template-rows: 1fr 1fr; gap: 14px; }
-.iris-user-pill { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--iris-line); border-radius: 999px; padding: 7px 14px 7px 7px; font-size: 12.5px; font-weight: 800; }
+.iris-user-pill { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--iris-line); border-radius: 999px; padding: 7px 14px 7px 7px; font-size: 12.5px; font-weight: 800; font-family: var(--iris-sans); color: var(--iris-ink); cursor: pointer; transition: transform .18s var(--iris-ease), border-color .18s ease, box-shadow .18s ease; }
+.iris-user-pill:hover { transform: translateY(-2px); border-color: #c9d2dd; box-shadow: 0 8px 18px rgba(21,34,53,.1); }
+.iris-user-pill.picked { border-color: var(--iris-orange); box-shadow: 0 0 0 3px #f15a2422; }
+.iris-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--iris-line); border-radius: 999px; padding: 10px 16px; margin-bottom: 10px; color: var(--iris-muted); transition: border-color .18s ease; }
+.iris-search:focus-within { border-color: var(--iris-orange); }
+.iris-search input { border: 0; outline: 0; background: none; flex: 1; min-width: 0; font-size: 13px; font-weight: 700; font-family: var(--iris-sans); color: var(--iris-ink); }
+.iris-search input::placeholder { color: #a3abb6; }
+.iris-pick-hint { font-size: 11.5px; font-weight: 700; color: var(--iris-coral); margin: 10px 0 0; }
+.iris-pick-hint a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .iris-user-pill i { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 10px; font-style: normal; font-weight: 800; }
 .iris-earn-num { font-size: 40px; font-weight: 800; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
 .iris-earn-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.12); overflow: hidden; margin-top: 12px; }
@@ -256,7 +267,8 @@
 
 /* ---- cta band ---- */
 .iris-cta-wrap { padding: 0 clamp(20px, 5vw, 88px) clamp(72px, 9vw, 128px); max-width: 1280px; margin: 0 auto; }
-.iris-cta-card { position: relative; border-radius: 32px; overflow: hidden; padding: clamp(56px, 8vw, 110px) 24px; text-align: center; background: linear-gradient(180deg, #5d8fd6 0%, #86aee4 35%, #bcd6f3 70%, #dcebfb 100%); }
+.iris-cta-card { --gx: 50%; --gy: 30%; position: relative; border-radius: 32px; overflow: hidden; padding: clamp(56px, 8vw, 110px) 24px; text-align: center; background: linear-gradient(180deg, #5d8fd6 0%, #86aee4 35%, #bcd6f3 70%, #dcebfb 100%); }
+.iris-cta-card::after { content: ""; position: absolute; inset: 0; background: radial-gradient(480px circle at var(--gx) var(--gy), rgba(255,255,255,.55), transparent 65%); pointer-events: none; }
 .iris-cta-card h2 { color: #fff; font-size: clamp(40px, 5.5vw, 76px); line-height: 1.02; margin: 0 0 16px; text-shadow: 0 2px 26px rgba(50,90,160,.3); }
 .iris-cta-card .iris-hero-sub { margin-bottom: 30px; }
 .iris-cta-form { display: flex; gap: 8px; justify-content: center; align-items: center; background: rgba(255,255,255,.94); border-radius: 999px; padding: 7px 7px 7px 22px; max-width: 480px; margin: 0 auto; box-shadow: 0 20px 50px rgba(30,60,120,.25); }
