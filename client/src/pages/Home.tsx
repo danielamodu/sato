@@ -389,12 +389,6 @@ export default function Home() {
           <i className="iris-cloud c3" /><i className="iris-cloud c4" /><i className="iris-cloud c5" />
         </div>
         <div className="iris-hero-inner">
-          <motion.span
-            className="iris-hero-eyebrow"
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}
-          >
-            Built on Bitcoin · Powered by Stacks
-          </motion.span>
           <h1 aria-label="Bitcoin money that feels human.">
             {(["Bitcoin money", "that feels human."] as const).map((line, i) => (
               <span className="iris-line" aria-hidden="true" key={line}>
@@ -402,7 +396,7 @@ export default function Home() {
                   className="iris-line-in"
                   initial={reduce ? { y: 0 } : { y: "112%" }}
                   animate={{ y: 0 }}
-                  transition={{ duration: 0.9, delay: 0.08 + i * 0.1, ease: [0.23, 1, 0.32, 1] }}
+                  transition={{ duration: 0.9, delay: i * 0.1, ease: [0.23, 1, 0.32, 1] }}
                 >
                   {line}
                 </motion.span>
@@ -411,7 +405,7 @@ export default function Home() {
           </h1>
           <motion.p
             className="iris-hero-sub"
-            initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.18 }}
+            initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.12 }}
           >
             Send to @usernames, earn on your balance, and cash out to local
             currency — one simple app for everyday money on Bitcoin.
@@ -646,19 +640,25 @@ export default function Home() {
             return (
               <span key={o.label} className="iris-orb-pos" style={{ left: `${left}%`, top: `${top}%` }}>
                 <motion.span
-                  className="iris-orb"
-                  style={{ width: o.size, height: o.size, background: o.bg, borderColor: "transparent" }}
-                  animate={reduce || isMobile ? undefined : { y: [0, -9, 0] }}
-                  transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
+                  className="iris-orb-drag"
+                  style={{ width: o.size, height: o.size }}
                   drag={!reduce && !isMobile}
                   dragConstraints={orbitRef}
-                  dragElastic={0.35}
+                  dragElastic={0.4}
                   dragMomentum={false}
-                  whileHover={reduce ? undefined : { scale: 1.12 }}
+                  dragSnapToOrigin
+                  whileHover={reduce || isMobile ? undefined : { scale: 1.12 }}
                   whileDrag={{ scale: 1.25, zIndex: 6 }}
                 >
-                  <o.icon size={22} color="#fff" />
-                  <span className="tip">{o.label}</span>
+                  <motion.span
+                    className="iris-orb"
+                    style={{ width: "100%", height: "100%", background: o.bg, borderColor: "transparent" }}
+                    animate={reduce || isMobile ? undefined : { y: [0, -9, 0] }}
+                    transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
+                  >
+                    <o.icon size={22} color="#fff" />
+                    <span className="tip">{o.label}</span>
+                  </motion.span>
                 </motion.span>
               </span>
             );
