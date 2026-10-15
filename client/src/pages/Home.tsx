@@ -161,6 +161,90 @@ function useMagnetic(strength = 6) {
   }, [active, strength]);
 }
 
+/* ---------- draggable orbit bubble (hand-rolled pointer drag: no gesture-system quirks) ---------- */
+const ORB_LEASH = 120;
+
+function Bubble({
+  o,
+  i,
+  total,
+  disabled,
+  reduce,
+}: {
+  o: (typeof orbs)[number];
+  i: number;
+  total: number;
+  disabled: boolean;
+  reduce: boolean;
+}) {
+  const angle = Math.PI - (i / (total - 1)) * Math.PI;
+  const left = 50 + 43 * Math.cos(angle);
+  const top = 92 - 78 * Math.sin(angle);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const grab = useRef({ active: false, sx: 0, sy: 0 });
+
+  return (
+    <span className="iris-orb-pos" style={{ left: `${left}%`, top: `${top}%` }}>
+      <span
+        className={dragging ? "iris-orb-drag dragging" : "iris-orb-drag"}
+        style={{
+          width: o.size,
+          height: o.size,
+          transform: `translate(${pos.x.toFixed(1)}px, ${pos.y.toFixed(1)}px) scale(${dragging ? 1.25 : 1})`,
+          transition: dragging ? "none" : "transform .55s cubic-bezier(.23,1,.32,1)",
+          zIndex: dragging ? 6 : undefined,
+        }}
+        onPointerDown={(e) => {
+          if (disabled) return;
+          e.preventDefault();
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            /* pointer already gone — ignore */
+          }
+          grab.current = { active: true, sx: e.clientX - pos.x, sy: e.clientY - pos.y };
+          setDragging(true);
+        }}
+        onPointerMove={(e) => {
+          if (!grab.current.active || disabled) return;
+          let x = e.clientX - grab.current.sx;
+          let y = e.clientY - grab.current.sy;
+          const d = Math.hypot(x, y);
+          if (d > ORB_LEASH) {
+            x = (x / d) * ORB_LEASH;
+            y = (y / d) * ORB_LEASH;
+          }
+          setPos({ x, y });
+        }}
+        onPointerUp={() => {
+          if (!grab.current.active) return;
+          grab.current.active = false;
+          setDragging(false);
+          setPos({ x: 0, y: 0 });
+        }}
+        onPointerCancel={() => {
+          grab.current.active = false;
+          setDragging(false);
+          setPos({ x: 0, y: 0 });
+        }}
+        onDragStart={(e) => e.preventDefault()}
+      >
+        <motion.span
+          className="iris-orb"
+          style={{ width: "100%", height: "100%", background: o.bg, borderColor: "transparent" }}
+          animate={reduce || disabled ? undefined : { y: [0, -9, 0] }}
+          transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
+          whileHover={reduce || disabled ? undefined : { scale: 1.12 }}
+        >
+          <o.icon size={22} color="#fff" />
+          <span className="tip">{o.label}</span>
+        </motion.span>
+      </span>
+    </span>
+  );
+}
+
 /* ---------- carousel data ---------- */
 const slides = [
   {
@@ -634,37 +718,9 @@ export default function Home() {
       {/* ---------- integrations arc ---------- */}
       <section className="iris-section iris-arc" id="flow">
         <div className="iris-orbit" ref={orbitRef} aria-hidden="true">
-          {orbs.map((o, i) => {
-            const angle = Math.PI - (i / (orbs.length - 1)) * Math.PI;
-            const left = 50 + 43 * Math.cos(angle);
-            const top = 92 - 78 * Math.sin(angle);
-            return (
-              <span key={o.label} className="iris-orb-pos" style={{ left: `${left}%`, top: `${top}%` }}>
-                <motion.span
-                  className="iris-orb-drag"
-                  style={{ width: o.size, height: o.size }}
-                  drag={!reduce && !isMobile}
-                  dragConstraints={orbitRef}
-                  dragElastic={0.4}
-                  dragMomentum={false}
-                  dragSnapToOrigin
-                  onDragStart={(e) => e.preventDefault()}
-                  whileHover={reduce || isMobile ? undefined : { scale: 1.12 }}
-                  whileDrag={{ scale: 1.25, zIndex: 6 }}
-                >
-                  <motion.span
-                    className="iris-orb"
-                    style={{ width: "100%", height: "100%", background: o.bg, borderColor: "transparent" }}
-                    animate={reduce || isMobile ? undefined : { y: [0, -9, 0] }}
-                    transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
-                  >
-                    <o.icon size={22} color="#fff" />
-                    <span className="tip">{o.label}</span>
-                  </motion.span>
-                </motion.span>
-              </span>
-            );
-          })}
+          {orbs.map((o, i) => (
+            <Bubble key={o.label} o={o} i={i} total={orbs.length} disabled={isMobile} reduce={!!reduce} />
+          ))}
         </div>
         <div className="iris-arc-copy iris-reveal">
           <span className="iris-eyebrow"><Globe size={13} /> The whole flow</span>
