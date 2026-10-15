@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import {
   ArrowLeftRight,
@@ -245,6 +245,28 @@ function Bubble({
   );
 }
 
+/* ---------- masked line-rise for section headlines (mirrors the hero) ---------- */
+function RiseLines({ lines, delay = 0 }: { lines: ReactNode[]; delay?: number }) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <>
+      {lines.map((line, i) => (
+        <span className="iris-line" key={i}>
+          <motion.span
+            className="iris-line-in"
+            initial={reduceMotion ? { y: 0 } : { y: "112%" }}
+            whileInView={{ y: 0 }}
+            viewport={{ once: true, margin: "-10% 0px" }}
+            transition={{ duration: 0.85, delay: delay + i * 0.1, ease: [0.23, 1, 0.32, 1] }}
+          >
+            {line}
+          </motion.span>
+        </span>
+      ))}
+    </>
+  );
+}
+
 /* ---------- carousel data ---------- */
 const slides = [
   {
@@ -309,6 +331,42 @@ const orbs = [
   { icon: QrCode, bg: "#0d1117", label: "Merchant QR", size: 58 },
   { icon: Receipt, bg: "#c4502a", label: "Receipts", size: 60 },
   { icon: ArrowLeftRight, bg: "#5b6b7f", label: "Send + cash out", size: 64 },
+];
+
+const directory = [
+  { name: "@amani", color: "#f15a24" },
+  { name: "@corner-cafe", color: "#111925" },
+  { name: "@jules", color: "#1d7a4c" },
+  { name: "@satoshi", color: "#f7931a" },
+  { name: "@mama-nkechi", color: "#2e6bf0" },
+  { name: "@berlin-kiosk", color: "#c4502a" },
+];
+
+const phoneViews = [
+  {
+    chip: ["Send", "to @name"] as const,
+    rows: [
+      { icon: QrCode, bg: "#111925", t: "Paid corner café", s: "Receipt shared · preview" },
+      { icon: Send, bg: "#f15a24", t: "Sent @amani · 0.012", s: "Confirmed · preview" },
+      { icon: Receipt, bg: "#c4502a", t: "Fee $0.40 · shown first", s: "Nothing buried" },
+    ],
+  },
+  {
+    chip: ["Earn", "daily"] as const,
+    rows: [
+      { icon: PiggyBank, bg: "#1d7a4c", t: "Yield added · +$0.44", s: "Today · illustrative" },
+      { icon: Sparkles, bg: "#f15a24", t: "Yield added · +$0.41", s: "Yesterday · illustrative" },
+      { icon: Check, bg: "#111925", t: "Balance updated", s: "No lockups in preview" },
+    ],
+  },
+  {
+    chip: ["Cash out", "to bank"] as const,
+    rows: [
+      { icon: Banknote, bg: "#c4502a", t: "Cash out arrived", s: "$500 · Chase ····42" },
+      { icon: ArrowLeftRight, bg: "#111925", t: "Cash out started", s: "$200 · rate locked 30s" },
+      { icon: Check, bg: "#1d7a4c", t: "Last cash out arrived", s: "Friday · preview" },
+    ],
+  },
 ];
 
 const faqs = [
@@ -405,6 +463,18 @@ export default function Home() {
 
   /* earn ticker (illustrative) */
   const [earnBal, setEarnBal] = useState(2480.65);
+  const [phoneTab, setPhoneTab] = useState(0);
+  const [dirQuery, setDirQuery] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
+  const dirMatches = useMemo(
+    () => directory.filter((d) => d.name.toLowerCase().includes(dirQuery.trim().toLowerCase())),
+    [dirQuery],
+  );
+  function pickRecipient(name: string) {
+    setTo(name);
+    setSendState("idle");
+    setPicked(name);
+  }
   useEffect(() => {
     if (reduce) return;
     const t = window.setInterval(() => setEarnBal((b) => b + 0.02), 2500);
@@ -614,21 +684,36 @@ export default function Home() {
                     <path d="M0 44 C30 43 38 30 62 34 S92 42 116 28 S146 30 168 22 S198 30 220 16 S256 20 300 4" fill="none" stroke="currentColor" strokeWidth="2.5" />
                   </svg>
                 </div>
-                <div className="iris-chip-row">
-                  <div className="iris-chip"><b>Send</b><small>to @name</small></div>
-                  <div className="iris-chip"><b>Earn</b><small>daily</small></div>
-                  <div className="iris-chip"><b>Cash out</b><small>to bank</small></div>
+                <div className="iris-chip-row" role="tablist" aria-label="Phone preview views">
+                  {phoneViews.map((v, i) => (
+                    <button
+                      key={v.chip[0]}
+                      role="tab"
+                      aria-selected={phoneTab === i}
+                      className={phoneTab === i ? "iris-chip active" : "iris-chip"}
+                      onClick={() => setPhoneTab(i)}
+                    >
+                      <b>{v.chip[0]}</b><small>{v.chip[1]}</small>
+                    </button>
+                  ))}
                 </div>
-                {[
-                  { icon: Check, bg: "#1d7a4c", t: "Yield added · +$0.44", s: "Today · illustrative" },
-                  { icon: QrCode, bg: "#111925", t: "Paid corner café", s: "Receipt shared" },
-                  { icon: Banknote, bg: "#c4502a", t: "Cash out arrived", s: "$500 · Chase ····42" },
-                ].map((r) => (
-                  <div className="iris-txn" key={r.t}>
-                    <span className="ti" style={{ background: `${r.bg}14`, color: r.bg }}><r.icon size={15} /></span>
-                    <span><strong>{r.t}</strong><small>{r.s}</small></span>
-                  </div>
-                ))}
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={phoneTab}
+                    initial={{ opacity: 0, x: 18 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -18 }}
+                    transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
+                    style={{ display: "flex", flexDirection: "column", gap: 12 }}
+                  >
+                    {phoneViews[phoneTab].rows.map((r) => (
+                      <div className="iris-txn" key={r.t}>
+                        <span className="ti" style={{ background: `${r.bg}14`, color: r.bg }}><r.icon size={15} /></span>
+                        <span><strong>{r.t}</strong><small>{r.s}</small></span>
+                      </div>
+                    ))}
+                  </motion.div>
+                </AnimatePresence>
                 <div className="iris-preview-tag">SEND · EARN · CASH OUT</div>
               </div>
             </div>
@@ -724,7 +809,7 @@ export default function Home() {
         </div>
         <div className="iris-arc-copy iris-reveal">
           <span className="iris-eyebrow"><Globe size={13} /> The whole flow</span>
-          <h2>One app for the whole flow.</h2>
+          <h2><RiseLines lines={["One app for", "the whole flow."]} /></h2>
           <p className="iris-body" style={{ marginInline: "auto" }}>
             Bitcoin in, friends paid, balance earning, money back at your bank.
             Sato connects the pieces so you never touch an address or a second app.
@@ -739,7 +824,7 @@ export default function Home() {
         <div className="iris-bento-head">
           <div className="iris-reveal">
             <span className="iris-eyebrow"><Sparkles size={13} /> The operating layer</span>
-            <h2>Everyday money,<br />on Bitcoin rails.</h2>
+            <h2><RiseLines lines={["Everyday money,", "on Bitcoin rails."]} /></h2>
             <p className="iris-body">Three jobs, one calm surface. Everything states its cost and status before you confirm — no tutorials required.</p>
           </div>
           <div className="iris-mini-cards iris-reveal">
@@ -753,12 +838,35 @@ export default function Home() {
             <span className="iris-ic"><AtSign size={18} /></span>
             <h3>Send to @anyone in seconds.</h3>
             <p>Type a name, set an amount, see both currencies. The receipt both sides can read.</p>
-            <div className="iris-card-mock" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {["@amani", "@corner-cafe", "@jules"].map((u, i) => (
-                <span className="iris-user-pill" key={u}>
-                  <i style={{ background: ["#f15a24", "#111925", "#1d7a4c"][i] }}>{u.slice(1, 3).toUpperCase()}</i>{u}
-                </span>
-              ))}
+            <div className="iris-card-mock">
+              <label className="iris-search">
+                <AtSign size={14} />
+                <input
+                  value={dirQuery}
+                  onChange={(e) => setDirQuery(e.target.value)}
+                  placeholder="Try “mama” or “cafe”…"
+                  aria-label="Search usernames"
+                />
+              </label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {dirMatches.length === 0 && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#6b6b6b" }}>No matches — invite them to Sato.</span>
+                )}
+                {dirMatches.map((u) => (
+                  <button
+                    key={u.name}
+                    className={picked === u.name ? "iris-user-pill picked" : "iris-user-pill"}
+                    onClick={() => pickRecipient(u.name)}
+                  >
+                    <i style={{ background: u.color }}>{u.name.slice(1, 3).toUpperCase()}</i>{u.name}
+                  </button>
+                ))}
+              </div>
+              {picked && (
+                <p className="iris-pick-hint">
+                  {picked} loaded — <a href="#top">try it in the phone demo ↑</a>
+                </p>
+              )}
             </div>
           </div>
           <div className="iris-col-stack">
@@ -802,7 +910,7 @@ export default function Home() {
       <section className="iris-section iris-faq" id="faq">
         <div className="iris-faq-left iris-reveal">
           <span className="iris-eyebrow"><ShieldCheck size={13} /> Before you join</span>
-          <h2>Clear answers build trust.</h2>
+          <h2><RiseLines lines={["Clear answers", "build trust."]} /></h2>
           <p className="iris-body">Money products should be direct about what happens behind the button. Here's what we can say now — and what we'll publish before launch.</p>
           <a className="iris-talk" href="mailto:team.satofinance@gmail.com"><Send size={14} /> Talk to us</a>
         </div>
@@ -824,13 +932,21 @@ export default function Home() {
 
       {/* ---------- cta band ---------- */}
       <div className="iris-cta-wrap" id="get">
-        <div className="iris-cta-card iris-reveal">
+        <div
+          className="iris-cta-card iris-reveal"
+          onMouseMove={(e) => {
+            const el = e.currentTarget;
+            const r = el.getBoundingClientRect();
+            el.style.setProperty("--gx", `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`);
+            el.style.setProperty("--gy", `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%`);
+          }}
+        >
           <div className="iris-clouds" aria-hidden="true">
             <i className="iris-cloud c1" /><i className="iris-cloud c2" />
           </div>
           <div style={{ position: "relative", zIndex: 2 }}>
             <span className="iris-eyebrow on-sky"><Sparkles size={13} /> Early access</span>
-            <h2>Be first in line.</h2>
+            <h2><RiseLines lines={["Be first in line."]} /></h2>
             <p className="iris-hero-sub">Join the list for your region. One useful email when<br />your invite is ready — nothing else.</p>
             {ctaWait.submitted ? (
               <span className="iris-success"><i><Check size={16} /></i> You're on the list. We'll be in touch.</span>
