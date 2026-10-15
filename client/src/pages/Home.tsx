@@ -388,6 +388,7 @@ export default function Home() {
           <motion.i className="iris-cloud c2" style={reduce ? undefined : { y: cloudB }} />
           <i className="iris-cloud c3" /><i className="iris-cloud c4" /><i className="iris-cloud c5" />
         </div>
+        <div className="iris-mist" aria-hidden="true" />
         <div className="iris-hero-inner">
           <h1 aria-label="Bitcoin money that feels human.">
             {(["Bitcoin money", "that feels human."] as const).map((line, i) => (
@@ -647,6 +648,7 @@ export default function Home() {
                   dragElastic={0.4}
                   dragMomentum={false}
                   dragSnapToOrigin
+                  onDragStart={(e) => e.preventDefault()}
                   whileHover={reduce || isMobile ? undefined : { scale: 1.12 }}
                   whileDrag={{ scale: 1.25, zIndex: 6 }}
                 >
