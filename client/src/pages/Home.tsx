@@ -1,142 +1,661 @@
-import { useEffect, useState } from "react";
-import { ArrowRight, ArrowUpRight, AtSign, Banknote, Check, ChevronDown, ChevronRight, CircleDollarSign, Cookie, Mail, Menu, ShieldCheck, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  ArrowLeftRight,
+  ArrowRight,
+  ArrowUpRight,
+  AtSign,
+  Banknote,
+  Bitcoin,
+  Building2,
+  Check,
+  ChevronDown,
+  Globe,
+  Menu,
+  PiggyBank,
+  Plus,
+  QrCode,
+  Receipt,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Wallet,
+  X,
+  Zap,
+} from "lucide-react";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import "./HomeIris.css";
 
 const logoSrc = "/assets/sato-logo.png";
+const BTC_USD = 65000;
 
-const features = [
-  { icon: AtSign, label: "Payments", title: "Send to @anyone", body: "Skip the wallet address. Find a person or business by username and send in a few taps." },
-  { icon: CircleDollarSign, label: "Balance", title: "Earn while it sits", body: "Your sBTC balance keeps working in the background, without another account to manage." },
-  { icon: Banknote, label: "Off-ramp", title: "Cash out when you need it", body: "Move from Bitcoin to your local currency and back to your bank, on your terms." },
-];
-
-const faqs = [
-  { question: "Who holds my money?", answer: "Sato is being designed around clear control and visibility. Before launch, we’ll explain exactly how balances are held, what Sato can and cannot access, and what your recovery options are. We won’t ask you to take custody claims on trust." },
-  { question: "What does a payment cost?", answer: "You’ll see the amount, any Sato fee, and any network or conversion cost before you confirm. The final fee model and supported currencies will be published before invitations open." },
-  { question: "How long do payments take to settle?", answer: "Sato will show a clear payment state—from sending to confirmed—so you know what has happened. Timing can depend on the Bitcoin and Stacks networks, the recipient, and the local-currency rail used for cash out." },
-  { question: "Where will Sato be available?", answer: "Availability depends on local-currency partners and regional requirements. Join the waitlist and tell us where you’re based so we can share launch updates for your region first." },
-];
-
-export default function Home() {
+/* ---------- shared waitlist hook ---------- */
+function useWaitlist(audience: string) {
   const [email, setEmail] = useState("");
-  const [company, setCompany] = useState(""); // honeypot — real users leave this empty
+  const [company, setCompany] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [consentVisible, setConsentVisible] = useState(false);
-  const [activeSection, setActiveSection] = useState("product");
-
-  usePageMeta(
-    "Sato — Send Bitcoin like a text.",
-    "Sato is a Bitcoin payment app for real people. Send to anyone, earn on your balance, cash out whenever.",
-  );
-
-  useEffect(() => {
-    setConsentVisible(window.localStorage.getItem("sato-cookie-consent") !== "set");
-    const revealItems = document.querySelectorAll<HTMLElement>(".reveal");
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("in-view");
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.14, rootMargin: "0px 0px -8% 0px" });
-    revealItems.forEach((item) => observer.observe(item));
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const sections = ["product", "why-sato", "trust", "waitlist"];
-    const updateActiveSection = () => {
-      const marker = window.scrollY + window.innerHeight * 0.35;
-      let current = "product";
-      sections.forEach((id) => {
-        const section = document.getElementById(id);
-        if (section && section.offsetTop <= marker) current = id;
-      });
-      setActiveSection(current);
-    };
-    updateActiveSection();
-    window.addEventListener("scroll", updateActiveSection, { passive: true });
-    window.addEventListener("resize", updateActiveSection);
-    return () => { window.removeEventListener("scroll", updateActiveSection); window.removeEventListener("resize", updateActiveSection); };
-  }, []);
-
-  function saveConsent() {
-    window.localStorage.setItem("sato-cookie-consent", "set");
-    setConsentVisible(false);
-  }
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const [error, setError] = useState("");
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
     if (!email.trim() || sending) return;
     setSending(true);
-    setSubmitError("");
+    setError("");
     try {
-      const response = await fetch("/api/waitlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), audience: "people", company }) });
-      if (!response.ok) throw new Error("Unable to join the waitlist yet.");
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), audience, company }),
+      });
+      if (!res.ok) throw new Error("Unable to join yet — try again in a moment.");
       setSubmitted(true);
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Unable to join the waitlist yet.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to join yet.");
     } finally {
       setSending(false);
     }
   }
+  return { email, setEmail, company, setCompany, submitted, sending, error, submit };
+}
+
+/* ---------- scroll reveal ---------- */
+function useIrisReveal() {
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>(".iris-reveal"));
+    if (!("IntersectionObserver" in window)) {
+      els.forEach((el) => el.classList.add("in"));
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((en) => {
+        if (en.isIntersecting) { (en.target as HTMLElement).classList.add("in"); io.unobserve(en.target); }
+      }),
+      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" },
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+}
+
+/* ---------- carousel data ---------- */
+const slides = [
+  {
+    key: "send",
+    pill: "Send",
+    headline: "From @username to done, clearly.",
+    body: "Pick a person or business by name, see Bitcoin and local money side by side, and confirm knowing exactly what moves.",
+    grad: "linear-gradient(135deg,#fbe3d3 0%,#f6d9e2 38%,#c9d8f2 100%)",
+    conn: ["You", "@amani"],
+    docs: [
+      { icon: Send, bg: "#f15a24", title: "@amani · 0.012 sBTC", sub: "≈ $780.42 · fee $0.40 · preview" },
+      { icon: QrCode, bg: "#111925", title: "Corner café · paid", sub: "Receipt shared · preview" },
+    ],
+    feed: [
+      { dot: "#1d7a4c", text: "Payment confirmed", time: "12:42" },
+      { dot: "#f15a24", text: "Fee shown before confirm", time: "12:41" },
+      { dot: "#8c98aa", text: "Receipt saved", time: "12:40" },
+    ],
+  },
+  {
+    key: "earn",
+    pill: "Earn",
+    headline: "Your balance keeps working quietly.",
+    body: "No second account, no homework. The sBTC sitting in Sato keeps earning in the background while you spend.",
+    grad: "linear-gradient(135deg,#fdf3e3 0%,#e4ecf9 55%,#cfe0f5 100%)",
+    conn: ["Balance", "+ yield"],
+    docs: [
+      { icon: PiggyBank, bg: "#1d7a4c", title: "Balance · $2,480.65", sub: "+$3.12 this week · illustrative" },
+      { icon: Sparkles, bg: "#f15a24", title: "Yield accrues daily", sub: "No lockups in preview" },
+    ],
+    feed: [
+      { dot: "#1d7a4c", text: "Yield added", time: "09:00" },
+      { dot: "#1d7a4c", text: "Yield added", time: "Mon" },
+      { dot: "#8c98aa", text: "Balance updated", time: "Sun" },
+    ],
+  },
+  {
+    key: "cashout",
+    pill: "Cash out",
+    headline: "Back to local money on your terms.",
+    body: "Move from Bitcoin to your bank when you need it, with the cost and timing stated before you tap confirm.",
+    grad: "linear-gradient(135deg,#e6edf8 0%,#f6e3d4 60%,#f9cfae 100%)",
+    conn: ["sBTC", "Your bank"],
+    docs: [
+      { icon: Banknote, bg: "#111925", title: "$500 → Chase ····42", sub: "Arrives 1–2 days · preview" },
+      { icon: Receipt, bg: "#c4502a", title: "Fee $1.20 · shown upfront", sub: "No surprises at confirm" },
+    ],
+    feed: [
+      { dot: "#f15a24", text: "Cash out started", time: "10:15" },
+      { dot: "#8c98aa", text: "Rate locked for 30s", time: "10:15" },
+      { dot: "#1d7a4c", text: "Last cash out arrived", time: "Fri" },
+    ],
+  },
+];
+
+const orbs = [
+  { icon: Bitcoin, bg: "#f7931a", label: "Bitcoin", size: 70 },
+  { icon: Zap, bg: "#111925", label: "Stacks", size: 62 },
+  { icon: Wallet, bg: "#f15a24", label: "sBTC balance", size: 68 },
+  { icon: AtSign, bg: "#1d7a4c", label: "@username directory", size: 60 },
+  { icon: Building2, bg: "#2e6bf0", label: "Bank rails", size: 66 },
+  { icon: QrCode, bg: "#0d1117", label: "Merchant QR", size: 58 },
+  { icon: Receipt, bg: "#c4502a", label: "Receipts", size: 60 },
+  { icon: ArrowLeftRight, bg: "#5b6b7f", label: "Send + cash out", size: 64 },
+];
+
+const faqs = [
+  { q: "What is Sato, exactly?", a: "Sato is a Bitcoin money app in preview: send sBTC to @usernames, earn on your balance, and cash out to local currency. One app for the payments you already make — no wallet addresses to copy." },
+  { q: "Do I need a crypto wallet or seed phrase?", a: "No. Sato is designed so you sign in and pay people by name. Before launch we'll publish exactly how balances are held, what Sato can and cannot access, and what your recovery options are." },
+  { q: "What does a payment cost?", a: "You'll see the amount, any Sato fee, and any network or conversion cost before you confirm — in both Bitcoin and your local currency. The final fee model will be published before invites open." },
+  { q: "How long do payments take?", a: "Sato shows a clear state from sending to confirmed so you always know what happened. Timing can depend on the Bitcoin and Stacks networks, the recipient, and the local rail used for cash out." },
+  { q: "Does my balance really earn?", a: "That's the plan: your sBTC balance works in the background with no second account to manage. Rates, mechanics, and risks will be published in plain language before launch — anything shown now is an illustrative preview." },
+  { q: "Can my business get paid with Sato?", a: "Yes — businesses get a @name, a QR code, and a clear paid receipt for every sale. Join the waitlist as a business and tell us where you operate so we can prioritize your region." },
+  { q: "Where will Sato be available first?", a: "Availability depends on local-currency partners and regional requirements. Join the list and tell us where you're based — we'll share launch updates for your region first." },
+];
+
+export default function Home() {
+  usePageMeta(
+    "Sato — Bitcoin money that feels human.",
+    "Sato is a Bitcoin money app: send to @anyone, earn on your balance, cash out to local currency.",
+  );
+  useIrisReveal();
+  const reduce = useReducedMotion();
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [dropOpen, setDropOpen] = useState(false);
+  const [slide, setSlide] = useState(0);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [mouse, setMouse] = useState({ x: 0, y: 0 });
+
+  const heroWait = useWaitlist("people");
+  const ctaWait = useWaitlist("people");
+  const newsWait = useWaitlist("newsletter");
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 760px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  /* interactive send demo */
+  const [to, setTo] = useState("@amani");
+  const [satAmt, setSatAmt] = useState(0.012);
+  const [sendState, setSendState] = useState<"idle" | "sending" | "done">("idle");
+  const fiat = useMemo(() => satAmt * BTC_USD, [satAmt]);
+  function reviewSend() {
+    if (sendState !== "idle") return;
+    setSendState("sending");
+    window.setTimeout(() => setSendState("done"), 1400);
+  }
+
+  /* earn ticker (illustrative) */
+  const [earnBal, setEarnBal] = useState(2480.65);
+  useEffect(() => {
+    if (reduce) return;
+    const t = window.setInterval(() => setEarnBal((b) => b + 0.02), 2500);
+    return () => window.clearInterval(t);
+  }, [reduce]);
+
+  const active = slides[slide];
 
   return (
-    <div className="site-shell">
-      <header className="site-header">
-        <a className="brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span><span className="brand-name">sato</span></a>
-        <nav className="top-links" aria-label="Audience navigation">
-          <a href="/people">For people</a><a href="/businesses">For businesses</a><a href="https://testnet.satoxbt.com/app">Testnet app</a><a className="top-login" href="mailto:team.satofinance@gmail.com">Contact</a><a className="top-signup" href="#waitlist">Sign up <ArrowUpRight size={13} /></a>
-        </nav>
-        <button className="menu-toggle" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={19} /> : <Menu size={19} />}</button>
-      </header>
-
-      <nav className={menuOpen ? "floating-dock dock-open" : "floating-dock"} aria-label="Main navigation"><a className="dock-brand" href="#top" aria-label="Sato home"><span className="brand-mark"><img src={logoSrc} alt="" /></span></a><a className={activeSection === "product" ? "dock-link active" : "dock-link"} href="#product" onClick={() => setMenuOpen(false)}>Product</a><a className={activeSection === "why-sato" ? "dock-link active" : "dock-link"} href="#why-sato" onClick={() => setMenuOpen(false)}>Why Sato</a><a className={activeSection === "trust" ? "dock-link active" : "dock-link"} href="#trust" onClick={() => setMenuOpen(false)}>Trust</a><a className={activeSection === "waitlist" ? "dock-link active" : "dock-link"} href="#waitlist" onClick={() => setMenuOpen(false)}>For merchants</a><a className="dock-cta" href="#waitlist" onClick={() => setMenuOpen(false)}>Get started <ArrowRight size={14} /></a></nav>
-
-      <main id="top">
-        <section className="hero section-pad" id="product">
-          <div className="hero-copy reveal reveal-one">
-            <span className="hero-eyebrow"><span className="hero-eyebrow-dot" />Built on Bitcoin · Live testnet app</span>
-            <h1>Bitcoin payments<br />that feel <span className="accent">human</span>.</h1>
-            <p className="hero-lede">Send to <strong>@anyone</strong>, earn on your balance, and cash out to your local currency. Sato puts everyday money movement in one simple place.</p>
-            <div className="hero-actions"><a className="primary-button" href="#waitlist">Get early access <ArrowRight size={17} /></a><a className="text-link" href="https://testnet.satoxbt.com/app">Try the live testnet app <ArrowUpRight size={15} /></a><a className="text-link" href="#why-sato">See how it works <ChevronRight size={15} /></a></div>
-          </div>
-
-          <div className="product-stage reveal reveal-two" aria-label="Illustrative Sato product preview">
-            <div className="stage-glow" />
-            <div className="app-window">
-              <div className="app-topbar"><div className="window-dots"><i /><i /><i /></div><span className="preview-label">SATO PREVIEW</span><span className="app-avatar">SA</span></div>
-              <div className="app-content">
-                <div className="app-heading"><div><small>Good morning, Sam</small><h2>Your money, moving.</h2></div><button aria-label="Open notifications"><span className="notification-dot" /></button></div>
-                <div className="balance-card"><div className="balance-top"><span>Total balance</span><span className="eye-dot">•••</span></div><div className="balance-amount">$2,480<span>.65</span></div><div className="balance-meta"><span>₿ 0.03812</span><span className="positive">+4.8% this month</span></div><div className="balance-chart"><svg viewBox="0 0 360 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 58 C28 57 34 40 60 46 S88 57 113 36 S143 41 164 30 S193 42 214 24 S249 28 265 18 S299 31 319 10 S346 15 360 2" fill="none" stroke="currentColor" strokeWidth="2.5" /><path d="M0 58 C28 57 34 40 60 46 S88 57 113 36 S143 41 164 30 S193 42 214 24 S249 28 265 18 S299 31 319 10 S346 15 360 2 V70 H0Z" fill="currentColor" opacity=".06" /></svg></div></div>
-                <div className="send-card"><div className="send-card-head"><span>Quick send</span><span className="orange-tag">sBTC</span></div><div className="recipient"><span className="recipient-avatar">AM</span><span><small>Sending to</small><strong>@amani</strong></span><Check size={16} /></div><div className="send-amount"><span>0.012</span><small>sBTC&nbsp; ≈ $780.42</small></div><button className="send-button">Review payment <ArrowRight size={15} /></button></div>
-                <div className="activity-row"><span className="activity-icon"><Check size={13} /></span><span><strong>Last payment confirmed</strong><small>Today · 12:42 PM</small></span><b>+₿ 0.004</b></div>
+    <div className="iris-page">
+      {/* ---------- floating nav ---------- */}
+      <div className="iris-navwrap">
+        <nav className={scrolled ? "iris-nav scrolled" : "iris-nav"} aria-label="Main">
+          <a className="iris-nav-brand" href="#top">
+            <span className="iris-nav-mark"><img src={logoSrc} alt="" /></span><span className="iris-nav-word">sato</span>
+          </a>
+          <div className={menuOpen ? "iris-nav-links mobile-open" : "iris-nav-links"}>
+            <div
+              className={dropOpen ? "iris-has-drop open" : "iris-has-drop"}
+              onMouseEnter={() => setDropOpen(true)}
+              onMouseLeave={() => setDropOpen(false)}
+            >
+              <button className="iris-nav-link" aria-expanded={dropOpen} onClick={() => setDropOpen(!dropOpen)}>
+                Product <ChevronDown size={14} />
+              </button>
+              <div className="iris-dropdown">
+                {[
+                  { icon: Send, t: "Send to @anyone", s: "Skip the address, pay by name" },
+                  { icon: PiggyBank, t: "Earn on balance", s: "sBTC works while it sits" },
+                  { icon: Banknote, t: "Cash out", s: "Back to local currency" },
+                ].map((d) => (
+                  <a key={d.t} className="iris-drop-item" href="#how" onClick={() => { setMenuOpen(false); setDropOpen(false); }}>
+                    <span className="iris-drop-ic"><d.icon size={16} /></span>
+                    <span><strong>{d.t}</strong><small>{d.s}</small></span>
+                  </a>
+                ))}
               </div>
             </div>
-            <div className="merchant-toast"><span className="merchant-icon"><Check size={15} /></span><span><small>Merchant preview</small><strong>Payment received</strong></span><b>₿ 0.012</b></div>
+            <a className="iris-nav-link" href="#why" onClick={() => setMenuOpen(false)}>Why Sato</a>
+            <a className="iris-nav-link" href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
           </div>
-        </section>
+          <button className="iris-burger" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+          <a className="iris-btn iris-btn-dark iris-nav-cta" href="#get">Get early access <ArrowRight size={15} /></a>
+        </nav>
+      </div>
 
-        <section className="proof-strip"><div><span className="proof-kicker">01</span><strong>Simple by default</strong><small>Familiar flows, no crypto homework.</small></div><div><span className="proof-kicker">02</span><strong>Clear at every step</strong><small>See the amount, fee, and status.</small></div><div><span className="proof-kicker">03</span><strong>For both sides</strong><small>Pay simply. Get paid simply.</small></div></section>
+      {/* ---------- hero ---------- */}
+      <header
+        className="iris-hero"
+        id="top"
+        onMouseMove={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setMouse({ x: (e.clientX - r.left) / r.width - 0.5, y: (e.clientY - r.top) / r.height - 0.5 });
+        }}
+      >
+        <div className="iris-clouds" aria-hidden="true">
+          <i className="iris-cloud c1" /><i className="iris-cloud c2" /><i className="iris-cloud c3" /><i className="iris-cloud c4" /><i className="iris-cloud c5" />
+        </div>
+        <div className="iris-hero-inner">
+          <motion.span
+            className="iris-hero-eyebrow"
+            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}
+          >
+            Built on Bitcoin · Powered by Stacks
+          </motion.span>
+          <motion.h1
+            initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.08 }}
+          >
+            Bitcoin money<br />that feels <em>human.</em>
+          </motion.h1>
+          <motion.p
+            className="iris-hero-sub"
+            initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.18 }}
+          >
+            Send to @usernames, earn on your balance, and cash out to local
+            currency — one simple app for everyday money on Bitcoin.
+          </motion.p>
+          <motion.div
+            className="iris-hero-ctas"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.28 }}
+          >
+            <a className="iris-btn iris-btn-dark" href="#get">Get early access <ArrowRight size={16} /></a>
+            <a className="iris-btn iris-btn-light" href="https://testnet.satoxbt.com/app">Try the testnet app <ArrowUpRight size={16} /></a>
+          </motion.div>
+          <div className="iris-microcopy">Free to join · One useful email · No noise</div>
+          <div className="iris-waitrow">
+            <span className="iris-avatars" aria-hidden="true">
+              <span style={{ background: "#f15a24" }}>SA</span>
+              <span style={{ background: "#1d7a4c" }}>AM</span>
+              <span style={{ background: "#111925" }}>JK</span>
+              <span style={{ background: "#2e6bf0" }}>+</span>
+            </span>
+            <span>2,400+ on the waitlist</span>
+            <button
+              className="iris-share"
+              onClick={() => {
+                const url = window.location.href;
+                if (navigator.share) navigator.share({ title: "Sato", url }).catch(() => {});
+                else { navigator.clipboard?.writeText(url).catch(() => {}); heroWait.setEmail(""); }
+              }}
+            >
+              Share the waitlist
+            </button>
+          </div>
+        </div>
 
-        <section className="why-section section-pad" id="why-sato">
-          <div className="section-heading reveal"><span className="section-kicker">The Sato way</span><h2>All the good<br />parts of Bitcoin.</h2><p>None of the parts that make people ask for a tutorial.</p></div>
-          <div className="feature-grid">{features.map(({ icon: Icon, label, title, body }, index) => <article className="feature-card reveal" key={label}><div className="feature-card-top"><span className="feature-index">0{index + 1}</span><span className="feature-icon"><Icon size={19} /></span></div><span className="feature-label">{label}</span><h3>{title}</h3><p>{body}</p><a href="#waitlist" aria-label={`Learn more about ${title}`}>Learn more <ArrowUpRight size={14} /></a></article>)}</div>
-        </section>
+        {/* phones */}
+        <div className="iris-phones">
+          <motion.div
+            className="iris-phone left"
+            animate={reduce ? undefined : { y: [0, -10, 0] }}
+            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+            style={reduce || isMobile ? undefined : { x: mouse.x * -14, rotate: -7 + mouse.x * 2 }}
+          >
+            <div className="iris-screen">
+              <div className="iris-notch"><i /></div>
+              <div className="iris-screen-body">
+                <div className="iris-screen-top"><small>SATO · PREVIEW</small><span className="iris-live"><i />LIVE DEMO</span></div>
+                <h3 className="iris-send-title">Send to<br />anyone.</h3>
+                <div className="iris-field">
+                  <label>RECIPIENT</label>
+                  <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="@username" aria-label="Recipient username" />
+                </div>
+                <div className="iris-field">
+                  <div className="iris-amount-row">
+                    <strong>{satAmt.toFixed(3)} <span style={{ fontSize: 13, color: "#8c98aa" }}>sBTC</span></strong>
+                    <small>≈ ${fiat.toLocaleString(undefined, { maximumFractionDigits: 2 })}</small>
+                  </div>
+                  <input
+                    className="iris-range" type="range" min={0.001} max={0.05} step={0.001}
+                    value={satAmt} onChange={(e) => { setSatAmt(Number(e.target.value)); setSendState("idle"); }}
+                    aria-label="Amount in sBTC"
+                  />
+                </div>
+                <div className="iris-fee-row"><span>Fee $0.40 · shown upfront</span><span>≈ 10 min</span></div>
+                <AnimatePresence mode="wait">
+                  {sendState === "done" ? (
+                    <motion.div
+                      key="done" className="iris-receipt"
+                      initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+                    >
+                      <span className="ri"><Check size={15} color="#fff" /></span>
+                      <span><strong>Sent to {to || "@amani"}</strong><small>Receipt saved · preview</small></span>
+                      <b>{satAmt.toFixed(3)} ₿</b>
+                    </motion.div>
+                  ) : (
+                    <motion.button
+                      key="btn" className="iris-review-btn" onClick={reviewSend} disabled={sendState === "sending"}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      {sendState === "sending" ? "Sending…" : <>Review payment <ArrowRight size={15} /></>}
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+                {sendState === "done" && (
+                  <button className="iris-share" style={{ color: "#6b6b6b", textDecoration: "underline" }} onClick={() => setSendState("idle")}>
+                    Send another
+                  </button>
+                )}
+                <div className="iris-preview-tag">INTERACTIVE PREVIEW — TRY ME</div>
+              </div>
+            </div>
+          </motion.div>
 
-        <section className="steps-section section-pad"><div className="steps-heading"><span className="section-kicker">How it works</span><h2>From <span>@username</span><br />to <strong>done.</strong></h2></div><div className="steps-track"><div className="step active"><span>01</span><div className="step-icon"><AtSign size={21} /></div><strong>Choose who to pay</strong><p>Find a person or business by @username.</p></div><div className="step"><span>02</span><div className="step-icon"><ArrowRight size={21} /></div><strong>Set the amount</strong><p>See Bitcoin and local currency together.</p></div><div className="step"><span>03</span><div className="step-icon"><Check size={21} /></div><strong>Payment confirmed</strong><p>Both sides get a clear receipt.</p></div></div></section>
+          <motion.div
+            className="iris-phone right"
+            animate={reduce ? undefined : { y: [0, 10, 0] }}
+            transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+            style={reduce || isMobile ? undefined : { x: mouse.x * 14, rotate: 6 + mouse.x * 2 }}
+          >
+            <div className="iris-screen">
+              <div className="iris-notch"><i /></div>
+              <div className="iris-screen-body">
+                <div className="iris-screen-top"><small>GOOD MORNING, SAM</small><span className="iris-live"><i />EARNING</span></div>
+                <div className="iris-balance-card">
+                  <small>TOTAL BALANCE</small>
+                  <div className="big">${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div className="sub"><span>₿ 0.03812</span><span className="pos">+$3.12 this week</span></div>
+                  <svg className="iris-spark" viewBox="0 0 300 54" width="100%" height="44" aria-hidden="true">
+                    <path d="M0 44 C30 43 38 30 62 34 S92 42 116 28 S146 30 168 22 S198 30 220 16 S256 20 300 4" fill="none" stroke="currentColor" strokeWidth="2.5" />
+                  </svg>
+                </div>
+                <div className="iris-chip-row">
+                  <div className="iris-chip"><b>Send</b><small>to @name</small></div>
+                  <div className="iris-chip"><b>Earn</b><small>daily</small></div>
+                  <div className="iris-chip"><b>Cash out</b><small>to bank</small></div>
+                </div>
+                {[
+                  { icon: Check, bg: "#1d7a4c", t: "Yield added · +$0.44", s: "Today · illustrative" },
+                  { icon: QrCode, bg: "#111925", t: "Paid corner café", s: "Receipt shared" },
+                  { icon: Banknote, bg: "#c4502a", t: "Cash out arrived", s: "$500 · Chase ····42" },
+                ].map((r) => (
+                  <div className="iris-txn" key={r.t}>
+                    <span className="ti" style={{ background: `${r.bg}14`, color: r.bg }}><r.icon size={15} /></span>
+                    <span><strong>{r.t}</strong><small>{r.s}</small></span>
+                  </div>
+                ))}
+                <div className="iris-preview-tag">SEND · EARN · CASH OUT</div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </header>
 
-        <section className="trust-section section-pad" id="trust"><div className="trust-heading"><span className="section-kicker">Before you join</span><h2>Clear answers<br />build trust.</h2><p>Money products should be direct about what happens behind the button. Here’s what we can say now—and what we’ll publish before launch.</p></div><div className="trust-content"><div className="trust-grid"><div className="trust-card"><ShieldCheck size={20} /><strong>Visible by design</strong><p>Amount, currency, fees, and status stay in view before you confirm.</p></div><div className="trust-card"><Check size={20} /><strong>No hidden steps</strong><p>We’ll explain custody, settlement, and regional availability in plain language.</p></div></div><div className="faq-list">{faqs.map((faq, index) => { const isOpen = openFaq === index; return <div className={isOpen ? "faq-item faq-open" : "faq-item"} key={faq.question}><button className="faq-trigger" aria-expanded={isOpen} onClick={() => setOpenFaq(isOpen ? null : index)}><span>{faq.question}</span><ChevronDown size={17} /></button><div className="faq-answer"><p>{faq.answer}</p></div></div>; })}</div></div></section>
+      {/* ---------- how it works ---------- */}
+      <section className="iris-section iris-how" id="how">
+        <div className="iris-reveal">
+          <span className="iris-eyebrow"><Zap size={13} /> How it works</span>
+          <AnimatePresence mode="wait">
+            <motion.div key={active.key} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.35 }}>
+              <h2>{active.headline}</h2>
+              <p className="iris-body">{active.body}</p>
+            </motion.div>
+          </AnimatePresence>
+          <div className="iris-carousel-ctrl">
+            <button className="iris-arrow" aria-label="Previous step" onClick={() => setSlide((s) => (s + slides.length - 1) % slides.length)}>←</button>
+            <button className="iris-arrow" aria-label="Next step" onClick={() => setSlide((s) => (s + 1) % slides.length)}>→</button>
+            <span className="iris-dots">
+              {slides.map((s, i) => (
+                <button key={s.key} className={i === slide ? "iris-dot active" : "iris-dot"} aria-label={`Go to ${s.pill}`} onClick={() => setSlide(i)} />
+              ))}
+            </span>
+          </div>
+        </div>
+        <div className="iris-reveal">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={active.key}
+              className="iris-how-card"
+              style={{ background: active.grad }}
+              initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}
+              transition={{ duration: 0.45, ease: [0.23, 1, 0.32, 1] }}
+            >
+              <span className="iris-step-tag">0{slide + 1} / 03 · {active.pill.toUpperCase()}</span>
+              <div className="iris-glass">
+                <div className="iris-conn-row">
+                  <span className="iris-conn-ic" style={{ background: "#0d1117" }}>{active.conn[0].slice(0, 2)}</span>
+                  <span className="iris-conn-link" />
+                  <span className="iris-conn-ic" style={{ background: "#f15a24" }}><ArrowLeftRight size={15} /></span>
+                  <span className="iris-conn-link" />
+                  <span className="iris-conn-ic" style={{ background: "#1d7a4c" }}>{active.conn[1].slice(0, 2)}</span>
+                </div>
+                {active.docs.map((d) => (
+                  <div className="iris-doc" key={d.title}>
+                    <span className="di" style={{ background: `${d.bg}14`, color: d.bg }}><d.icon size={16} /></span>
+                    <span><strong>{d.title}</strong><small>{d.sub}</small></span>
+                  </div>
+                ))}
+                <div className="iris-feed">
+                  {active.feed.map((f) => (
+                    <div className="iris-feed-row" key={f.text + f.time}>
+                      <span className="fdot" style={{ background: f.dot }} />{f.text}<time>{f.time}</time>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </section>
 
-        <section className="waitlist-section section-pad" id="waitlist"><div className="waitlist-inner"><div><div className="status-label light"><span className="status-pulse" /> Now building</div><h2>Be first<br />in line.</h2><p>Join the early access list. We’ll share the first invite when Sato is ready in your region.</p></div><div className="waitlist-panel">{submitted ? <div className="success-message"><span><Check size={17} /></span><div><strong>You’re on the list.</strong><small>We’ll be in touch when Sato is ready.</small></div></div> : <form className="waitlist-form" onSubmit={handleSubmit}><input type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" value={company} onChange={(event) => setCompany(event.target.value)} style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }} /><label htmlFor="email">Email address</label><div className="input-row"><input id="email" type="email" required placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /><button type="submit" aria-label="Join the Sato waitlist" disabled={sending}><ArrowRight size={19} /></button></div><small>{submitError || (sending ? "Sending your note…" : "One useful email. No noise.")}</small></form>}<div className="audience-note"><span>For people</span><span>For businesses</span><span>Built on Bitcoin</span></div></div></div></section>
-      </main>
-      <footer className="site-footer section-pad"><div className="footer-main"><div className="footer-brand-block"><a className="brand" href="#top"><span className="brand-mark"><img src={logoSrc} alt="" /></span><span className="brand-name">sato</span></a><p>Bitcoin payments<br />that feel human.</p></div><div className="footer-column"><span>Explore</span><a href="#product">Product</a><a href="#why-sato">Why Sato</a><a href="#trust">Trust & FAQ</a><a href="#waitlist">Early access</a></div><div className="footer-column"><span>For your peace of mind</span><a href="/security">Security <ArrowUpRight size={13} /></a><a href="/privacy">Privacy <ArrowUpRight size={13} /></a><a href="/terms">Terms <ArrowUpRight size={13} /></a></div><div className="footer-column"><span>Stay in touch</span><a href="mailto:team.satofinance@gmail.com"><Mail size={14} /> team.satofinance@gmail.com</a><a href="https://x.com/satofinance" target="_blank" rel="noreferrer">𝕏 @satofinance</a></div></div><div className="footer-bottom"><span>© 2026 Sato. Built on Bitcoin.</span><span>Simple by default · Clear at every step</span><a href="#top">Back to top <ArrowUpRight size={13} /></a></div></footer>
-      {consentVisible && <aside className="consent-banner" role="dialog" aria-label="Cookie and analytics preferences"><div className="consent-icon"><Cookie size={18} /></div><div className="consent-copy"><strong>Privacy, without the fine print.</strong><p>We use essential storage to remember your preferences. Optional analytics help us understand what makes Sato clearer. Nothing is enabled until you choose.</p><div className="consent-links"><a href="/privacy">Privacy policy <ArrowUpRight size={12} /></a><span>·</span><a href="/terms">Terms <ArrowUpRight size={12} /></a></div></div><div className="consent-actions"><button className="consent-secondary" onClick={saveConsent}>Only essential</button><button className="consent-primary" onClick={saveConsent}>Allow analytics <ArrowRight size={14} /></button></div></aside>}
+      {/* ---------- integrations arc ---------- */}
+      <section className="iris-section iris-arc" id="flow">
+        <div className="iris-orbit" aria-hidden="true">
+          {orbs.map((o, i) => {
+            const angle = Math.PI - (i / (orbs.length - 1)) * Math.PI;
+            const left = 50 + 43 * Math.cos(angle);
+            const top = 92 - 78 * Math.sin(angle);
+            return (
+              <motion.span
+                key={o.label}
+                className="iris-orb"
+                style={{ left: `${left}%`, top: `${top}%`, width: o.size, height: o.size, background: o.bg, borderColor: "transparent" }}
+                animate={reduce ? undefined : { y: [0, -9, 0] }}
+                transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
+              >
+                <o.icon size={22} color="#fff" />
+                <span className="tip">{o.label}</span>
+              </motion.span>
+            );
+          })}
+        </div>
+        <div className="iris-arc-copy iris-reveal">
+          <span className="iris-eyebrow"><Globe size={13} /> The whole flow</span>
+          <h2>One app for the whole flow.</h2>
+          <p className="iris-body" style={{ marginInline: "auto" }}>
+            Bitcoin in, friends paid, balance earning, money back at your bank.
+            Sato connects the pieces so you never touch an address or a second app.
+          </p>
+          <a className="iris-btn iris-btn-dark" href="#get">Start with Sato <ArrowRight size={16} /></a>
+        </div>
+      </section>
+
+      {/* ---------- bento ---------- */}
+      <section className="iris-section" id="why">
+        <div className="iris-bento-head">
+          <div className="iris-reveal">
+            <span className="iris-eyebrow"><Sparkles size={13} /> The operating layer</span>
+            <h2>Everyday money,<br />on Bitcoin rails.</h2>
+            <p className="iris-body">Three jobs, one calm surface. Everything states its cost and status before you confirm — no tutorials required.</p>
+          </div>
+          <div className="iris-mini-cards iris-reveal">
+            <div className="iris-mini"><strong>No addresses, ever</strong><p>Pay people and shops by @name or QR. Copy-paste is not a feature here.</p></div>
+            <div className="iris-mini"><strong>Fees stated upfront</strong><p>Amount, fee, arrival estimate — all visible before your thumb moves.</p></div>
+          </div>
+        </div>
+        <div className="iris-bento-grid">
+          <div className="iris-card peach tall iris-reveal">
+            <span className="iris-tag">Send</span>
+            <span className="iris-ic"><AtSign size={18} /></span>
+            <h3>Send to @anyone in seconds.</h3>
+            <p>Type a name, set an amount, see both currencies. The receipt both sides can read.</p>
+            <div className="iris-card-mock" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {["@amani", "@corner-cafe", "@jules"].map((u, i) => (
+                <span className="iris-user-pill" key={u}>
+                  <i style={{ background: ["#f15a24", "#111925", "#1d7a4c"][i] }}>{u.slice(1, 3).toUpperCase()}</i>{u}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="iris-col-stack">
+            <div className="iris-card iris-reveal">
+              <span className="iris-tag">Clarity</span>
+              <span className="iris-ic"><Receipt size={18} /></span>
+              <h3 style={{ fontSize: 22 }}>Costs before confirm.</h3>
+              <p>Fee, rate lock, arrival window. Nothing buried.</p>
+            </div>
+            <div className="iris-card iris-reveal">
+              <span className="iris-tag">Receipts</span>
+              <span className="iris-ic"><Check size={18} /></span>
+              <h3 style={{ fontSize: 22 }}>Both sides see done.</h3>
+              <p>Sender and merchant share one clear confirmation.</p>
+            </div>
+          </div>
+          <div className="iris-card black tall iris-reveal">
+            <span className="iris-tag">Earn · Preview</span>
+            <span className="iris-ic"><PiggyBank size={18} /></span>
+            <h3>Balance that works while it sits.</h3>
+            <p>No second account. Watch it tick — illustrative, live mechanics at launch.</p>
+            <div className="iris-card-mock">
+              <div className="iris-earn-num">${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="iris-earn-bar"><i /></div>
+            </div>
+          </div>
+        </div>
+        <div className="iris-bento-bottom">
+          <div className="iris-card iris-card-row iris-reveal">
+            <span className="iris-ic"><Banknote size={18} /></span>
+            <div><span className="iris-tag">Cash out</span><h3 style={{ fontSize: 22, marginTop: 10 }}>Back to your bank.</h3><p style={{ margin: 0 }}>Local currency, stated timing, on your terms.</p></div>
+          </div>
+          <div className="iris-card iris-card-row iris-reveal">
+            <span className="iris-ic"><ShieldCheck size={18} /></span>
+            <div><span className="iris-tag">Foundation</span><h3 style={{ fontSize: 22, marginTop: 10 }}>Built on Bitcoin.</h3><p style={{ margin: 0 }}>Powered by Stacks · sBTC · visible status, always.</p></div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- marquee ---------- */}
+      <div className="iris-marquee" aria-hidden="true">
+        <div className="iris-marquee-track">
+          {[0, 1].map((k) => (
+            <span key={k}>SEND <b>✦</b> EARN <b>✦</b> CASH OUT <b>✦</b> NO ADDRESSES <b>✦</b> FEES UPFRONT <b>✦</b> RECEIPTS <b>✦</b> BUILT ON BITCOIN <b>✦</b>&nbsp;</span>
+          ))}
+        </div>
+      </div>
+
+      {/* ---------- faq ---------- */}
+      <section className="iris-section iris-faq" id="faq">
+        <div className="iris-faq-left iris-reveal">
+          <span className="iris-eyebrow"><ShieldCheck size={13} /> Before you join</span>
+          <h2>Clear answers build trust.</h2>
+          <p className="iris-body">Money products should be direct about what happens behind the button. Here's what we can say now — and what we'll publish before launch.</p>
+          <a className="iris-talk" href="mailto:team.satofinance@gmail.com"><Send size={14} /> Talk to us</a>
+        </div>
+        <div className="iris-acc iris-reveal">
+          {faqs.map((f, i) => {
+            const open = openFaq === i;
+            return (
+              <div className={open ? "iris-acc-item open" : "iris-acc-item"} key={f.q}>
+                <button className="iris-acc-btn" aria-expanded={open} onClick={() => setOpenFaq(open ? null : i)}>
+                  {f.q}
+                  <span className="iris-plus"><Plus size={15} /></span>
+                </button>
+                <div className="iris-acc-panel"><p>{f.a}</p></div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ---------- cta band ---------- */}
+      <div className="iris-cta-wrap" id="get">
+        <div className="iris-cta-card iris-reveal">
+          <div className="iris-clouds" aria-hidden="true">
+            <i className="iris-cloud c1" /><i className="iris-cloud c2" />
+          </div>
+          <div style={{ position: "relative", zIndex: 2 }}>
+            <span className="iris-eyebrow on-sky"><Sparkles size={13} /> Early access</span>
+            <h2>Be first in line.</h2>
+            <p className="iris-hero-sub">Join the list for your region. One useful email when<br />your invite is ready — nothing else.</p>
+            {ctaWait.submitted ? (
+              <span className="iris-success"><i><Check size={16} /></i> You're on the list. We'll be in touch.</span>
+            ) : (
+              <form className="iris-cta-form" onSubmit={ctaWait.submit}>
+                <input type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" value={ctaWait.company} onChange={(e) => ctaWait.setCompany(e.target.value)} style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }} />
+                <input type="email" required placeholder="you@example.com" value={ctaWait.email} onChange={(e) => ctaWait.setEmail(e.target.value)} aria-label="Email address" />
+                <button className="iris-btn iris-btn-dark" type="submit" disabled={ctaWait.sending} style={{ padding: "13px 24px" }}>
+                  {ctaWait.sending ? "Joining…" : <>Join <ArrowRight size={15} /></>}
+                </button>
+              </form>
+            )}
+            <div className="iris-cta-note">{ctaWait.error || "Built on Bitcoin · Powered by Stacks · Preview — features subject to change"}</div>
+            <div style={{ display: heroWait.submitted ? "none" : "block", marginTop: 6 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* ---------- footer ---------- */}
+      <footer className="iris-footer">
+        <div className="iris-foot-grid">
+          <div className="iris-foot-brand">
+            <a className="iris-nav-brand" href="#top" style={{ border: 0, padding: 0 }}>
+              <span className="iris-nav-mark"><img src={logoSrc} alt="" /></span><span className="iris-nav-word">sato</span>
+            </a>
+            <p>Sato is in preview. Screens and numbers shown are illustrative and subject to change before launch.</p>
+          </div>
+          <div className="iris-foot-col">
+            <span>Product</span>
+            <a href="#how">Send</a><a href="#how">Earn</a><a href="#how">Cash out</a><a href="/security">Security</a>
+          </div>
+          <div className="iris-foot-col">
+            <span>Company</span>
+            <a href="/people">For people</a><a href="/businesses">For businesses</a><a href="https://testnet.satoxbt.com/app">Testnet app</a><a href="mailto:team.satofinance@gmail.com">Contact</a>
+          </div>
+          <div className="iris-news">
+            <div className="iris-foot-col" style={{ marginBottom: 12 }}><span>Stay in the loop</span></div>
+            <p>Launch updates for your region. No noise, unsubscribe anytime.</p>
+            {newsWait.submitted ? (
+              <span className="iris-success" style={{ boxShadow: "none", border: "1px solid #e2e0d9" }}><i><Check size={16} /></i> Subscribed.</span>
+            ) : (
+              <form className="iris-news-form" onSubmit={newsWait.submit}>
+                <input type="email" required placeholder="you@example.com" value={newsWait.email} onChange={(e) => newsWait.setEmail(e.target.value)} aria-label="Email for newsletter" />
+                <button type="submit" disabled={newsWait.sending}>{newsWait.sending ? "…" : "Subscribe"}</button>
+              </form>
+            )}
+          </div>
+        </div>
+        <div className="iris-foot-bottom">
+          <span>© 2026 Sato. Built on Bitcoin.</span>
+          <span><a href="/privacy" style={{ color: "inherit" }}>Privacy</a> · <a href="/terms" style={{ color: "inherit" }}>Terms</a></span>
+          <a href="#top" style={{ color: "inherit" }}>Back to top ↑</a>
+        </div>
+        <div className="iris-wordmark" aria-hidden="true">sato</div>
+      </footer>
     </div>
   );
 }
