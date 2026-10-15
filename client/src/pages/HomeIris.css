@@ -84,6 +84,13 @@
 .iris-nav-cta { font-size: 13.5px; padding: 13px 20px; }
 .iris-burger { display: none; border: 0; background: none; padding: 9px; cursor: pointer; color: var(--iris-ink); }
 
+/* ---- scroll progress ---- */
+.iris-progress { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60; background: linear-gradient(90deg, var(--iris-orange), #ff8d66); transform-origin: 0 50%; }
+
+/* ---- masked line-rise for the hero headline ---- */
+.iris-line { display: block; overflow: hidden; padding-bottom: .09em; margin-bottom: -.09em; }
+.iris-line-in { display: block; will-change: transform; }
+
 /* ---- hero sky ---- */
 .iris-hero { position: relative; padding: 132px 24px 0; overflow: hidden; background: linear-gradient(180deg, #5d8fd6 0%, #7ba9e3 30%, #a9c9f0 58%, #d6e7fa 82%, var(--iris-paper) 100%); }
 .iris-clouds { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -139,6 +146,9 @@
 .iris-receipt strong { display: block; font-size: 12.5px; }
 .iris-receipt small { display: block; font-size: 11px; color: #93a0b0; }
 .iris-receipt b { margin-left: auto; font-size: 13px; }
+.iris-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+.iris-burst i { position: absolute; left: 0; top: 0; display: block; border-radius: 2px; translate: -50% -50%; }
+.iris-drag-hint { margin-top: 16px; font-size: 12px; font-weight: 700; color: var(--iris-muted); }
 .iris-balance-card { background: linear-gradient(140deg, #28394c, #1a2635); border-radius: 16px; padding: 16px; color: #fff; }
 .iris-balance-card small { font-size: 10px; letter-spacing: .1em; color: #95a0ae; font-weight: 700; }
 .iris-balance-card .big { font-size: 30px; font-weight: 800; letter-spacing: -.05em; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
@@ -166,8 +176,11 @@
 .iris-dots { display: flex; gap: 8px; margin-left: 6px; }
 .iris-dot { width: 8px; height: 8px; border-radius: 999px; border: 0; background: #d8d4cc; cursor: pointer; transition: all .25s var(--iris-ease); padding: 0; }
 .iris-dot.active { width: 28px; background: var(--iris-ink); }
+.iris-auto { display: block; width: 130px; height: 3px; border-radius: 99px; background: #e3ded4; overflow: hidden; margin-top: 20px; }
+.iris-auto i { display: block; height: 100%; background: var(--iris-orange); transform-origin: 0 50%; }
 .iris-how-card { border-radius: 26px; padding: clamp(22px, 3vw, 36px); min-height: 480px; position: relative; overflow: hidden; border: 1px solid #f0ddd2; transition: background .5s ease; }
-.iris-glass { background: rgba(255,255,255,.72); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,.8); border-radius: 20px; padding: 20px; box-shadow: 0 20px 50px rgba(120,70,30,.12); }
+.iris-glass { --gx: 50%; --gy: 0%; background: rgba(255,255,255,.72); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,.8); border-radius: 20px; padding: 20px; box-shadow: 0 20px 50px rgba(120,70,30,.12); position: relative; overflow: hidden; }
+.iris-glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(340px circle at var(--gx) var(--gy), rgba(255,255,255,.95), transparent 62%); pointer-events: none; }
 .iris-conn-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .iris-conn-ic { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 13px; }
 .iris-conn-link { flex: 1; height: 2px; background: repeating-linear-gradient(90deg, #c9c2b8 0 6px, transparent 6px 11px); }
@@ -186,8 +199,9 @@
 .iris-arc-copy { max-width: 560px; margin: 0 auto; position: relative; z-index: 2; }
 .iris-arc-copy .iris-body { margin: 0 auto 28px; }
 .iris-orbit { position: relative; height: 300px; max-width: 760px; margin: 10px auto 0; }
-.iris-orb { position: absolute; border-radius: 50%; background: #fff; border: 1px solid var(--iris-line); display: grid; place-items: center; box-shadow: 0 14px 34px rgba(21,34,53,.1); cursor: default; transition: transform .25s var(--iris-ease), box-shadow .25s ease; transform: translate(-50%, -50%); }
-.iris-orb:hover { transform: translate(-50%, -50%) scale(1.12) !important; box-shadow: 0 18px 44px rgba(241,90,36,.25); z-index: 5; }
+.iris-orb-pos { position: absolute; transform: translate(-50%, -50%); }
+.iris-orb { position: relative; border-radius: 50%; background: #fff; border: 1px solid var(--iris-line); display: grid; place-items: center; box-shadow: 0 14px 34px rgba(21,34,53,.1); cursor: grab; }
+.iris-orb:active { cursor: grabbing; }
 .iris-orb .tip { position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px); background: var(--iris-ink); color: #fff; font-size: 11px; font-weight: 700; padding: 7px 12px; border-radius: 9px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all .2s ease; font-family: var(--iris-sans); }
 .iris-orb:hover .tip { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -221,13 +235,6 @@
 .iris-earn-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.12); overflow: hidden; margin-top: 12px; }
 .iris-earn-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--iris-orange), var(--iris-mint)); animation: earn-fill 3s var(--iris-ease) infinite alternate; }
 @keyframes earn-fill { from { width: 42%; } to { width: 78%; } }
-
-/* ---- marquee ---- */
-.iris-marquee { border-top: 1px solid var(--iris-line); border-bottom: 1px solid var(--iris-line); background: var(--iris-ink); color: #fff; overflow: hidden; padding: 16px 0; }
-.iris-marquee-track { display: flex; gap: 40px; width: max-content; animation: marquee 26s linear infinite; font-weight: 800; font-size: 13px; letter-spacing: .22em; }
-.iris-marquee-track span { display: flex; align-items: center; gap: 40px; }
-.iris-marquee-track b { color: var(--iris-orange); font-weight: 800; }
-@keyframes marquee { to { transform: translateX(-50%); } }
 
 /* ---- faq ---- */
 .iris-faq { display: grid; grid-template-columns: .8fr 1.2fr; gap: clamp(32px, 5vw, 80px); align-items: start; }
@@ -305,6 +312,8 @@
   .iris-card-row { flex-direction: column; align-items: flex-start; gap: 0; }
   .iris-card-row .iris-ic { margin-bottom: 16px; }
   .iris-orbit { height: 230px; }
+  .iris-drag-hint { display: none; } /* drag is desktop-only */
+  .iris-cloud.c1, .iris-cloud.c2, .iris-cloud.c3, .iris-cloud.c4 { animation: none; } /* keep scroll parallax only */
   .iris-orb { scale: .82; }
   .iris-dot { width: 10px; height: 10px; background-clip: padding-box; border: 7px solid transparent; box-sizing: content-box; margin: -7px; }
   .iris-dot.active { width: 30px; }
@@ -329,7 +338,7 @@
   .iris-acc-btn { font-size: 13.5px; padding: 17px 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .iris-cloud, .iris-marquee-track, .iris-earn-bar i, .iris-live i { animation: none; }
+  .iris-cloud, .iris-earn-bar i, .iris-live i { animation: none; }
   .iris-reveal { opacity: 1; transform: none; transition: none; }
   .iris-btn, .iris-card, .iris-mini, .iris-arrow { transition: none; }
 }
