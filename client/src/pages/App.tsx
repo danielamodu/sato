@@ -4180,8 +4180,8 @@ const shellStyles = `
 .claimed-note{color:var(--text-muted);font-size:13.5px;}
 
 .inline-form{display:flex;gap:10px;}
-.text-field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:var(--white);flex:1;transition:border-color .14s,box-shadow .14s;}
-.text-field:focus-within{border-color:var(--ink);box-shadow:0 0 0 3px #0d111714;}
+.text-field{display:flex;align-items:center;gap:10px;border:0;border-bottom:1px solid #d8d5cd;border-radius:0;padding:10px 2px;background:transparent;flex:1;transition:border-color .25s ease;}
+.text-field:focus-within{border-color:var(--ink);box-shadow:none;}
 .text-field.block{width:100%;margin-bottom:4px;}
 .field-at{color:var(--text-muted);font-weight:700;}
 .field-lead{color:var(--muted);flex-shrink:0;}
@@ -4403,8 +4403,8 @@ const shellStyles = `
 .dock-btn:nth-child(4){animation-delay:.15s;}
 .dock-btn:nth-child(5){animation-delay:.2s;}
 .dock-btn:nth-child(6){animation-delay:.25s;}
-.dock-btn:not(:disabled):hover{transform:translateY(-3px);border-color:#cdd0ca;box-shadow:var(--elev-2);}
-.dock-btn:not(:disabled):active{transform:scale(.95);}
+.dock-btn:not(:disabled):hover{transform:translateY(-2px);border-color:#cdd0ca;box-shadow:var(--elev-2);}
+.dock-btn:not(:disabled):active{transform:scale(.98);}
 .dock-btn:disabled{opacity:.55;cursor:default;}
 .dock-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;background:var(--paper);border:1px solid var(--line);color:var(--ink);transition:color .16s,border-color .16s,transform .18s var(--ease);}
 .dock-btn:not(:disabled):hover .dock-ico{color:var(--orange);border-color:#cdd0ca;transform:scale(1.06);}
@@ -4457,7 +4457,7 @@ const shellStyles = `
 @keyframes fade-in{from{opacity:0;}to{opacity:1;}}
 
 /* View entrance — staggered; re-runs on tab switch via key={view} */
-.view>*{animation:fade-up .5s var(--ease) both;}
+.view>*{animation:fade-up .6s var(--ease) both;}
 .view>*:nth-child(2){animation-delay:.07s;}
 .view>*:nth-child(3){animation-delay:.14s;}
 .view>*:nth-child(4){animation-delay:.21s;}
