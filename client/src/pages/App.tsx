@@ -41,6 +41,7 @@ import {
   Lightbulb,
   Landmark,
   AlertTriangle,
+  ChevronDown,
 } from "lucide-react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -978,14 +979,14 @@ function SatoApp() {
 // --- shared dashboard pieces ---------------------------------------------
 
 // Small copy-to-clipboard button used on the account card.
-function CopyButton({ value }: { value: string }) {
+function CopyButton({ value, what = "Address" }: { value: string; what?: string }) {
   return (
     <button
       className="icon-btn"
-      title="Copy address"
+      title={`Copy ${what.toLowerCase()}`}
       onClick={() => {
         navigator.clipboard?.writeText(value);
-        toast.success("Address copied");
+        toast.success(`${what} copied`);
       }}
     >
       <Copy size={13} />
@@ -1171,29 +1172,80 @@ function StatusPill({ status }: { status: SatoTx["status"] }) {
   return <span className={`pill ${status}`}>{status}</span>;
 }
 
-// One transaction row — links out to the explorer.
+// One transaction row — expands inline with receipt detail (status timeline,
+// txid + copy, explorer link) instead of navigating away on tap.
 function TxRow({ tx }: { tx: SatoTx }) {
+  const [open, setOpen] = useState(false);
   const Icon = txIcon(tx.label);
+  const steps =
+    tx.status === "success"
+      ? ["Submitted", "Confirming", "Confirmed"]
+      : tx.status === "pending"
+        ? ["Submitted", "Confirming"]
+        : ["Submitted", "Failed"];
   return (
-    <a
-      className="tx-row"
-      href={explorerTx(tx.txId)}
-      target="_blank"
-      rel="noreferrer"
-    >
-      <span className="tx-ico">
-        <Icon size={16} />
-      </span>
-      <span className="tx-main">
-        <span className="tx-label">{tx.label}</span>
-        <span className="tx-sub">{tx.contract}</span>
-      </span>
-      <span className="tx-right">
-        <StatusPill status={tx.status} />
-        <span className="tx-time">{timeAgo(tx.time)}</span>
-        <ExternalLink className="tx-ext" size={14} />
-      </span>
-    </a>
+    <div className={`tx-row${open ? " open" : ""}`}>
+      <button
+        type="button"
+        className="tx-row-head"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span className="tx-ico">
+          <Icon size={16} />
+        </span>
+        <span className="tx-main">
+          <span className="tx-label">{tx.label}</span>
+          <span className="tx-sub">{tx.contract}</span>
+        </span>
+        <span className="tx-right">
+          <StatusPill status={tx.status} />
+          <span className="tx-time">{timeAgo(tx.time)}</span>
+          <ChevronDown size={14} className={`tx-chev${open ? " open" : ""}`} />
+        </span>
+      </button>
+      {open && (
+        <div className="tx-detail">
+          <div className="tx-steps">
+            {steps.map((s, i) => {
+              const last = i === steps.length - 1;
+              const cls =
+                tx.status === "success"
+                  ? "done"
+                  : tx.status === "pending"
+                    ? last
+                      ? "active"
+                      : "done"
+                    : last
+                      ? "bad"
+                      : "done";
+              return (
+                <span key={s} className={`tx-step ${cls}`}>
+                  <i />
+                  {s}
+                </span>
+              );
+            })}
+          </div>
+          <div className="tx-idrow">
+            <span className="tx-id mono">{short(tx.txId)}</span>
+            <CopyButton value={tx.txId} what="Transaction ID" />
+          </div>
+          <div className="tx-datesub">
+            {tx.time ? new Date(tx.time).toLocaleString() : "Awaiting confirmation"}
+          </div>
+          <a
+            className="tx-explorer-link"
+            href={explorerTx(tx.txId)}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            View on explorer <ArrowUpRight size={13} />
+          </a>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1203,8 +1255,9 @@ function TxTable(props: {
   loading: boolean;
   address: string;
   limit?: number;
+  emptyHint?: string;
 }) {
-  const { txs, loading, address, limit } = props;
+  const { txs, loading, address, limit, emptyHint } = props;
   if (loading && txs.length === 0) {
     return (
       <div className="tx-loading">
@@ -1220,7 +1273,7 @@ function TxTable(props: {
         <span className="empty-icon">
           <Receipt size={20} />
         </span>
-        <p>No on-chain activity yet. Your sends and claims will show up here.</p>
+        <p>{emptyHint || "No on-chain activity yet. Your sends and claims will show up here."}</p>
         <a
           className="tx-empty-link"
           href={explorerAddr(address)}
@@ -1918,6 +1971,15 @@ function SendView(props: {
             value={sendAmount}
             onChange={(e) => setSendAmount(e.target.value)}
           />
+          <button
+            type="button"
+            className="field-max"
+            onClick={() => setSendAmount(balance > 0n ? balance.toString() : "")}
+            disabled={balance <= 0n}
+            title="Use your full balance"
+          >
+            Max
+          </button>
           <span className="field-trail">sats</span>
         </div>
         {amountSats > 0n && btcUsd != null && (
@@ -1962,13 +2024,22 @@ function SendView(props: {
           onClick={onSend}
           disabled={busy === "send" || !sendTo || !sendAmount || overBalance}
         >
-          <Send size={16} />
-          {busy === "send"
-            ? "Sending…"
-            : gasless
-              ? "Send sBTC — no gas"
-              : "Send sBTC"}
+          {busy === "send" ? (
+            <>
+              <RefreshCw size={16} className="spin" /> Sending…
+            </>
+          ) : (
+            <>
+              <Send size={16} />
+              {gasless ? "Send sBTC — no gas" : "Send sBTC"}
+            </>
+          )}
         </button>
+        {busy !== "send" && (!sendTo || amountSats <= 0n) && (
+          <span className="field-hint muted" style={{ marginTop: 10 }}>
+            {!sendTo ? "Add a recipient above to continue" : "Enter an amount above to continue"}
+          </span>
+        )}
       </section>
 
       <aside className="panel send-aside">
@@ -2545,6 +2616,9 @@ function EarnView(props: {
                     ? "Matured — claim your principal + boost yield"
                     : `Unlocks in ${fmt(blocksLeft)} blocks`}
                 </div>
+                {!matured && (
+                  <span className="lock-progress" aria-hidden="true"><i /></span>
+                )}
               </div>
               <div className="earn-actions">
                 <button
@@ -2552,12 +2626,18 @@ function EarnView(props: {
                   onClick={onClaim}
                   disabled={busy === "earn-claim" || !matured}
                 >
-                  <ArrowUpRight size={16} />
-                  {busy === "earn-claim"
-                    ? "Claiming…"
-                    : matured
-                      ? "Claim principal + yield"
-                      : `Locked for ${fmt(blocksLeft)} more blocks`}
+                  {busy === "earn-claim" ? (
+                    <>
+                      <RefreshCw size={16} className="spin" /> Claiming…
+                    </>
+                  ) : (
+                    <>
+                      <ArrowUpRight size={16} />
+                      {matured
+                        ? "Claim principal + yield"
+                        : `Locked for ${fmt(blocksLeft)} more blocks`}
+                    </>
+                  )}
                 </button>
               </div>
             </>
@@ -2608,8 +2688,19 @@ function EarnView(props: {
                   </button>
                 ))}
               </div>
+              <div className="text-field block term-custom">
+                <input
+                  className="field-input"
+                  inputMode="numeric"
+                  placeholder="Or type custom blocks"
+                  value={TERMS.includes(earnTerm) ? "" : earnTerm}
+                  onChange={(e) => setEarnTerm(e.target.value.replace(/[^0-9]/g, ""))}
+                  aria-label="Custom lock term in blocks"
+                />
+                <span className="field-trail">blocks</span>
+              </div>
               <span className="field-hint muted">
-                ~a few seconds per block on testnet — locks mature fast for the demo.
+                Presets, or any positive number of blocks — ~a few seconds per block on testnet.
               </span>
 
               {projYield > 0n && (
@@ -2630,10 +2721,28 @@ function EarnView(props: {
                   onClick={onLock}
                   disabled={lockDisabled}
                 >
-                  <ArrowDownLeft size={16} />
-                  {busy === "earn-lock" ? "Locking…" : "Lock for boost"}
+                  {busy === "earn-lock" ? (
+                    <>
+                      <RefreshCw size={16} className="spin" /> Locking…
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownLeft size={16} /> Lock for boost
+                    </>
+                  )}
                 </button>
               </div>
+              {busy !== "earn-lock" && lockDisabled && (
+                <span className="field-hint muted" style={{ marginTop: 10 }}>
+                  {amountSats <= 0n
+                    ? "Enter an amount above to continue"
+                    : termBlocks <= 0n
+                      ? "Pick a term or type a custom one"
+                      : over
+                        ? "Lower the amount to fit your available balance"
+                        : ""}
+                </span>
+              )}
             </>
           )}
         </section>
@@ -2724,6 +2833,7 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
   const [verifying, setVerifying] = useState(false);
   const [quote, setQuote] = useState<BillQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
+  const [quoteStale, setQuoteStale] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -2767,12 +2877,15 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
   }, [billersCode, meterType, serviceID]);
   // Debounced live quote. Fixed-price plans (data, cable) are priced from the
   // chosen variation server-side; airtime/electricity from the naira amount.
+  // The last good quote stays on screen while a refresh is in flight so the
+  // price never flashes away on every keystroke.
   useEffect(() => {
-    setQuote(null);
     const amount = Math.floor(Number(ngn));
     const ready = isFixed ? !!variationCode : amount >= 50;
     if (!ready) {
+      setQuote(null);
       setQuoting(false);
+      setQuoteStale(false);
       return;
     }
     let alive = true;
@@ -2787,9 +2900,13 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
               : category === "electricity"
                 ? await quoteBill({ service: "electricity", serviceID: disco, amountNgn: amount, variation_code: meterType })
                 : await quoteBill({ service: "cable", serviceID: provider, variation_code: variationCode });
-        if (alive) setQuote(q);
+        if (alive) {
+          setQuote(q);
+          setQuoteStale(false);
+        }
       } catch {
-        if (alive) setQuote(null);
+        // Keep the last good price up and say so, instead of blanking it.
+        if (alive) setQuoteStale(true);
       } finally {
         if (alive) setQuoting(false);
       }
@@ -2820,7 +2937,7 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
   };
 
   const payDisabled =
-    busy || !quote || quoting || over || !phoneOk || (isVerifiable && !codeOk);
+    busy || !quote || quoting || over || !phoneOk || (isVerifiable && (!codeOk || !verified));
   const onPay = async () => {
     if (payDisabled || !quote) return;
     const p = phone.trim();
@@ -3068,22 +3185,30 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
               <span className="field-usd">
                 ≈ {fmt(sats)} sats
                 {btcUsd != null ? ` · ${fmtUsd(sats, btcUsd)}` : ""}
+                {quoting ? " · updating…" : ""}
               </span>
-              <span className={`field-hint ${over ? "miss" : "muted"}`}>
+              <span className={`field-hint ${over ? "miss" : quoteStale ? "warn" : "muted"}`}>
                 {over
                   ? `Costs more than your balance of ${fmt(balance)} sats`
-                  : `₦${quote.amountNgn.toLocaleString()} · rate ₦${Math.round(quote.rate).toLocaleString()}/BTC`}
+                  : quoteStale
+                    ? "Couldn't refresh the price — last quote shown"
+                    : `₦${quote.amountNgn.toLocaleString()} · rate ₦${Math.round(quote.rate).toLocaleString()}/BTC`}
               </span>
             </>
+          ) : quoting ? (
+            <span className="quote-skel" aria-hidden="true"><i /><i /></span>
           ) : (
             <span className="field-hint muted">
-              {quoting
-                ? "Pricing at the live rate…"
-                : isFixed
-                  ? "Pick a plan to see the sBTC price"
-                  : Number(ngn) > 0
-                    ? "Couldn't price this — try again in a moment"
-                    : "Enter an amount to see the sBTC price"}
+              {isFixed
+                ? "Pick a plan to see the sBTC price"
+                : Number(ngn) > 0
+                  ? "Couldn't price this — try again in a moment"
+                  : "Enter an amount to see the sBTC price"}
+            </span>
+          )}
+          {!busy && isVerifiable && codeOk && !verified && quote && (
+            <span className="field-hint warn" style={{ marginBottom: 10 }}>
+              Verify the {category === "electricity" ? "meter" : "smartcard"} number above to unlock Pay
             </span>
           )}
           <button className="btn primary full" onClick={onPay} disabled={payDisabled}>
@@ -3561,6 +3686,15 @@ function ActivityView(props: {
   reload: () => void;
 }) {
   const { address, txs, loading, reload } = props;
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"all" | SatoTx["status"]>("all");
+  const q = query.trim().toLowerCase();
+  const filtered = txs.filter(
+    (t) =>
+      (status === "all" || t.status === status) &&
+      (!q || `${t.label} ${t.contract} ${t.txId}`.toLowerCase().includes(q)),
+  );
+  const filtering = q.length > 0 || status !== "all";
   return (
     <>
       <header className="page-head">
@@ -3580,7 +3714,41 @@ function ActivityView(props: {
       </header>
 
       <section className="panel">
-        <TxTable txs={txs} loading={loading} address={address} />
+        <div className="tx-filter">
+          <div className="text-field block">
+            <Search size={16} className="field-lead" />
+            <input
+              className="field-input"
+              placeholder="Search label, contract, or txid…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search transactions"
+            />
+          </div>
+          <div className="filter-chips" role="group" aria-label="Filter by status">
+            {(["all", "success", "pending", "failed"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`filter-chip${status === s ? " active" : ""}`}
+                onClick={() => setStatus(s)}
+              >
+                {s === "all" ? "All" : s[0].toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <TxTable
+          txs={filtered}
+          loading={loading}
+          address={address}
+          emptyHint={filtering ? "Nothing matches this filter. Clear the search or pick another status." : undefined}
+        />
+        {filtering && filtered.length > 0 && (
+          <p className="filter-count">
+            Showing {filtered.length} of {txs.length}
+          </p>
+        )}
       </section>
 
       <a
@@ -3839,6 +4007,10 @@ const shellStyles = `
 .lock-yield{color:var(--orange);}
 .lock-status{margin-top:12px;padding:10px 14px;background:var(--white);border:1px solid var(--line);border-radius:10px;font-size:12.5px;font-weight:700;color:var(--text-muted);text-align:center;}
 .lock-status.matured{color:#0f7a3d;border-color:#bfe6cd;background:#f2fbf5;}
+.lock-progress{display:block;height:6px;border-radius:99px;background:#e8e6df;overflow:hidden;margin-top:10px;}
+.lock-progress i{display:block;height:100%;width:38%;border-radius:99px;background:linear-gradient(90deg,var(--orange),#ff8d66);animation:lock-slide 1.6s ease-in-out infinite;}
+@keyframes lock-slide{0%{transform:translateX(-110%);}100%{transform:translateX(290%);}}
+.term-custom{margin-top:10px;}
 .field-max{flex-shrink:0;border:1px solid var(--line);background:var(--white);color:var(--ink);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:5px 9px;border-radius:7px;cursor:pointer;font-family:var(--sans);transition:background .14s,border-color .14s;}
 .field-max:hover:not(:disabled){background:#ecebe5;border-color:#d7d3c9;}
 .field-max:disabled{opacity:.4;cursor:not-allowed;}
@@ -3912,9 +4084,10 @@ const shellStyles = `
 
 /* Transaction list */
 .tx-list{display:flex;flex-direction:column;}
-.tx-row{display:flex;align-items:center;gap:12px;padding:11px 8px;margin:0 -8px;border-top:1px solid var(--line);text-decoration:none;color:inherit;border-radius:10px;transition:background .12s;}
+.tx-row{padding:11px 8px;margin:0 -8px;border-top:1px solid var(--line);border-radius:10px;transition:background .12s;}
 .tx-row:first-child{border-top:0;}
 .tx-row:hover{background:var(--paper);}
+.tx-row-head{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:left;}
 .tx-ico{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;background:var(--paper);border:1px solid var(--line);color:var(--ink);}
 .tx-main{display:flex;flex-direction:column;min-width:0;flex:1;gap:2px;}
 .tx-label{font-size:14px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -3923,6 +4096,33 @@ const shellStyles = `
 .tx-time{font-size:12px;color:var(--text-muted);white-space:nowrap;min-width:56px;text-align:right;}
 .tx-ext{color:var(--muted);opacity:0;transition:opacity .12s;}
 .tx-row:hover .tx-ext{opacity:1;}
+.tx-chev{color:var(--muted);transition:transform .2s var(--ease);flex-shrink:0;}
+.tx-chev.open{transform:rotate(180deg);}
+.tx-detail{padding:12px 0 4px 48px;animation:fade-up .3s var(--ease) both;}
+.tx-steps{display:flex;flex-direction:column;gap:7px;margin-bottom:12px;}
+.tx-step{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:700;color:var(--muted);}
+.tx-step i{width:8px;height:8px;border-radius:50%;background:#c9c5bb;flex-shrink:0;}
+.tx-step.done{color:var(--ink);}
+.tx-step.done i{background:#1d7a4c;}
+.tx-step.active{color:var(--ink);}
+.tx-step.active i{background:var(--orange);animation:tx-pulse 1.4s ease-in-out infinite;}
+.tx-step.bad{color:#b3261e;}
+.tx-step.bad i{background:#b3261e;}
+@keyframes tx-pulse{50%{opacity:.3;}}
+.tx-idrow{display:flex;align-items:center;gap:8px;}
+.tx-id{font-size:12.5px;}
+.tx-datesub{font-size:12px;color:var(--muted);margin-top:6px;}
+.tx-explorer-link{display:inline-flex;align-items:center;gap:4px;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--orange);}
+.tx-filter{display:flex;flex-direction:column;gap:10px;margin-bottom:6px;}
+.filter-chips{display:flex;gap:8px;flex-wrap:wrap;}
+.filter-chip{border:1px solid var(--line);background:var(--white);color:var(--text-muted);border-radius:999px;padding:8px 15px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:all .14s;}
+.filter-chip:hover{border-color:#c9c5bb;}
+.filter-chip.active{background:var(--ink);border-color:var(--ink);color:#fff;}
+.filter-count{font-size:12px;color:var(--muted);margin:12px 0 0;text-align:center;}
+.quote-skel{display:flex;flex-direction:column;gap:6px;padding:4px 0;}
+.quote-skel i{display:block;height:13px;border-radius:6px;background:linear-gradient(90deg,#ecebe5 25%,#f7f6f2 50%,#ecebe5 75%);background-size:200% 100%;animation:quote-shimmer 1.2s ease-in-out infinite;}
+.quote-skel i:last-child{width:62%;}
+@keyframes quote-shimmer{to{background-position:-200% 0;}}
 .pill{display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:capitalize;}
 .pill.success{background:#eef6f1;color:#2f7d54;}
 .pill.pending{background:#fdf0e4;color:#b56a1f;}
@@ -4081,7 +4281,7 @@ const shellStyles = `
   .bh-num{font-size:32px;}
 }
 @media(prefers-reduced-motion:reduce){
-  .view>*,.tx-list .tx-row,.auth-body>*,.brandside-card,.spin{animation:none !important;}
+  .view>*,.tx-list .tx-row,.auth-body>*,.brandside-card,.spin,.lock-progress i,.tx-detail,.tx-step.active i,.quote-skel i{animation:none !important;}
   *{transition-duration:.01ms !important;}
 }
 `;
