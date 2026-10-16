@@ -59,7 +59,6 @@ import {
   getTxStatus,
   getBalanceHistory,
   getEarnStats,
-  getChainHeight,
   earnLock,
   earnClaim,
   fundEarn,
@@ -395,23 +394,6 @@ function SatoApp() {
       });
     }
   }, [address]);
-
-  // Live chain tip for the status strip. Slow poll, best-effort — a failed
-  // fetch keeps the last height so the strip never shows a fake number.
-  const [tipHeight, setTipHeight] = useState(0n);
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      const h = await getChainHeight();
-      if (alive && h > 0n) setTipHeight(h);
-    };
-    load();
-    const id = setInterval(load, 30_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
 
   // Live BTC + STX prices for the USD figures across the app. Refreshes on a
   // slow interval; a failed fetch leaves them null so amounts fall back to
@@ -920,12 +902,6 @@ function SatoApp() {
 
       {/* Main column */}
       <main className="main">
-        <ChainStrip
-          height={tipHeight > 0n ? tipHeight : earn.height}
-          btcUsd={btcUsd}
-          poolLive={sponsor.poolBalance > 0n}
-          address={address}
-        />
         <div className="view" key={view}>
         {view === "overview" && (
           <Overview
@@ -1234,43 +1210,6 @@ function StatTile(props: {
           />
         </span>
       )}
-    </div>
-  );
-}
-
-// Live chain status strip: block tip, BTC price, sponsor pool, and the
-// connected address with copy. Heights/prices are as-of-last-fetch — never
-// invented — and refresh on their own slow intervals.
-function ChainStrip({
-  height,
-  btcUsd,
-  poolLive,
-  address,
-}: {
-  height: bigint;
-  btcUsd: number | null;
-  poolLive: boolean;
-  address: string;
-}) {
-  return (
-    <div className="chain-strip" role="status" aria-label="Live network status">
-      <span className="chain-live">
-        <i />
-        {height > 0n ? `Block ${fmt(height)}` : "Block …"}
-      </span>
-      <span className="chain-sep" aria-hidden="true" />
-      <span className="chain-price">
-        {btcUsd != null
-          ? `₿ $${btcUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-          : "₿ …"}
-      </span>
-      <span className={`chain-pool${poolLive ? " live" : ""}`}>
-        {poolLive ? "Pool live" : "Pool empty"}
-      </span>
-      <span className="chain-addr">
-        {short(address)}
-        <CopyButton value={address} />
-      </span>
     </div>
   );
 }
@@ -1888,78 +1827,80 @@ function Overview(props: {
         hydrated={hydrated}
       />
 
-      <section className="panel" id="claim-username">
-        <span className="panel-eyebrow">Your username</span>
-        {myName ? (
-          <div className="claimed-row">
-            <span className="claimed-badge">
-              <Check size={15} /> @{myName}
-            </span>
-            <span className="claimed-note">
-              People can send to you by this name.
-            </span>
+      <div className="ov-split">
+        <section className="panel">
+          <div className="panel-head">
+            <h2>Recent activity</h2>
+            <button className="panel-link" onClick={goActivity}>
+              View all <ArrowUpRight size={13} />
+            </button>
           </div>
-        ) : (
-          <>
-            <p className="panel-lede">
-              Claim a username so people can pay you without an address.
-            </p>
-            <div className="inline-form">
-              <div className="text-field">
-                <span className="field-at">@</span>
-                <input
-                  className="field-input"
-                  placeholder="yourname"
-                  value={regInput}
-                  maxLength={32}
-                  onChange={(e) =>
-                    setRegInput(
-                      e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
-                    )
-                  }
-                />
-              </div>
-              <button
-                className="btn primary"
-                onClick={onRegister}
-                disabled={
-                  busy === "register" ||
-                  !regInput.trim() ||
-                  nameState === "checking" ||
-                  nameState === "taken"
-                }
-              >
-                {busy === "register" ? "Claiming…" : "Claim"}
-              </button>
-            </div>
-            {regInput.trim() && nameState === "checking" && (
-              <span className="field-hint muted">
-                Checking the registry…
-              </span>
-            )}
-            {nameState === "available" && (
-              <span className="field-hint ok">
-                <Check size={13} /> @{regInput.trim()} is available
-              </span>
-            )}
-            {nameState === "taken" && (
-              <span className="field-hint miss">
-                @{regInput.trim()} is already taken
-              </span>
-            )}
-          </>
-        )}
-      </section>
+          <TxTable txs={txs} loading={txLoading} address={address} limit={5} />
+        </section>
 
-      <section className="panel">
-        <div className="panel-head">
-          <h2>Recent activity</h2>
-          <button className="panel-link" onClick={goActivity}>
-            View all <ArrowUpRight size={13} />
-          </button>
-        </div>
-        <TxTable txs={txs} loading={txLoading} address={address} limit={5} />
-      </section>
+        <section className="panel" id="claim-username">
+          <span className="panel-eyebrow">Your username</span>
+          {myName ? (
+            <div className="claimed-row">
+              <span className="claimed-badge">
+                <Check size={15} /> @{myName}
+              </span>
+              <span className="claimed-note">
+                People can send to you by this name.
+              </span>
+            </div>
+          ) : (
+            <>
+              <p className="panel-lede">
+                Claim a username so people can pay you without an address.
+              </p>
+              <div className="inline-form">
+                <div className="text-field">
+                  <span className="field-at">@</span>
+                  <input
+                    className="field-input"
+                    placeholder="yourname"
+                    value={regInput}
+                    maxLength={32}
+                    onChange={(e) =>
+                      setRegInput(
+                        e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
+                      )
+                    }
+                  />
+                </div>
+                <button
+                  className="btn primary"
+                  onClick={onRegister}
+                  disabled={
+                    busy === "register" ||
+                    !regInput.trim() ||
+                    nameState === "checking" ||
+                    nameState === "taken"
+                  }
+                >
+                  {busy === "register" ? "Claiming…" : "Claim"}
+                </button>
+              </div>
+              {regInput.trim() && nameState === "checking" && (
+                <span className="field-hint muted">
+                  Checking the registry…
+                </span>
+              )}
+              {nameState === "available" && (
+                <span className="field-hint ok">
+                  <Check size={13} /> @{regInput.trim()} is available
+                </span>
+              )}
+              {nameState === "taken" && (
+                <span className="field-hint miss">
+                  @{regInput.trim()} is already taken
+                </span>
+              )}
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
@@ -2128,25 +2069,50 @@ function SendView(props: {
       </section>
 
       <aside className="panel send-aside">
-        <span className="panel-eyebrow">How sending works</span>
-        <ul className="tips">
-          <li>
-            <span className="tip-dot" /> Pay a <b>@username</b> or a raw{" "}
-            <b>ST…</b> address.
-          </li>
-          <li>
-            <span className="tip-dot" /> Usernames resolve to an address before
-            the transfer.
-          </li>
-          <li>
-            <span className="tip-dot" /> With <b>Gasless</b> on, the sponsor
-            pool pays the network fee — you sign, they cover it.
-          </li>
-          <li>
-            <span className="tip-dot" /> You approve every transfer in your
-            wallet — nothing moves without you.
-          </li>
-        </ul>
+        <span className="panel-eyebrow">Receipt preview</span>
+        <div className="sum-rows">
+          <div className="sum-row">
+            <span>To</span>
+            {sendTo ? (
+              lookupState === "found" ? (
+                <strong className="ok-inline">{sendTo} <Check size={13} /></strong>
+              ) : (
+                <strong>{sendTo}</strong>
+              )
+            ) : (
+              <strong className="sum-empty">—</strong>
+            )}
+          </div>
+          <div className="sum-row">
+            <span>Amount</span>
+            {amountSats > 0n ? (
+              <strong>
+                {fmt(amountSats)} <small>sats</small>
+                {btcUsd != null ? ` · ${fmtUsd(amountSats, btcUsd)}` : ""}
+              </strong>
+            ) : (
+              <strong className="sum-empty">—</strong>
+            )}
+          </div>
+          <div className="sum-row">
+            <span>Network fee</span>
+            <strong>
+              {gasless
+                ? sponsorReady
+                  ? "Covered by pool"
+                  : "Pool empty — you may pay"
+                : "You pay"}
+            </strong>
+          </div>
+          <div className="sum-row total">
+            <span>You spend</span>
+            {amountSats > 0n && !overBalance ? (
+              <strong>{fmt(amountSats)} <small>sats</small></strong>
+            ) : (
+              <strong className="sum-empty">—</strong>
+            )}
+          </div>
+        </div>
         <div className="aside-balance">
           <span>Available</span>
           <strong>
@@ -2341,94 +2307,94 @@ function ReceiveView(props: {
       </header>
 
       <div className="send-grid">
-        <section className="panel receive-panel">
+        <section className="panel receive-hero">
           <div className="qr-frame">
             <QRCodeSVG
               value={payLink}
-              size={188}
+              size={252}
               level="H"
               bgColor="#ffffff"
               fgColor="#0d1117"
               marginSize={0}
               imageSettings={{
                 src: "/assets/sato-logo.png",
-                height: 38,
-                width: 38,
+                height: 48,
+                width: 48,
                 excavate: true,
               }}
             />
           </div>
 
-          <div className="receive-handle">
+          <div className="receive-info">
+            <div className="receive-handle">
+              {myName ? (
+                <>
+                  <span className="receive-at">@</span>
+                  <span className="receive-name">{myName}</span>
+                </>
+              ) : (
+                <span className="receive-name unnamed">{short(address)}</span>
+              )}
+            </div>
             {myName ? (
-              <>
-                <span className="receive-at">@</span>
-                <span className="receive-name">{myName}</span>
-              </>
+              <p className="receive-note">
+                Scan the code or open the link — anyone can pay you at{" "}
+                <b>@{myName}</b>.
+              </p>
             ) : (
-              <span className="receive-name unnamed">{short(address)}</span>
+              <p className="receive-note">
+                You can still receive to your address. Claim a{" "}
+                <button className="link-btn" onClick={goClaim}>
+                  @username
+                </button>{" "}
+                for a cleaner code and link.
+              </p>
             )}
-          </div>
-          {myName ? (
-            <p className="receive-note">
-              Scan the code or open the link — anyone can pay you at{" "}
-              <b>@{myName}</b>.
-            </p>
-          ) : (
-            <p className="receive-note">
-              You can still receive to your address. Claim a{" "}
-              <button className="link-btn" onClick={goClaim}>
-                @username
-              </button>{" "}
-              for a cleaner code and link.
-            </p>
-          )}
 
-          <div className="receive-actions">
-            <button
-              className="btn primary full"
-              onClick={downloadCard}
-              disabled={saving}
-            >
-              <Download size={16} /> {saving ? "Creating…" : "Download card"}
-            </button>
-            <button
-              className="btn soft full"
-              onClick={() => copy(payLink, "Payment link")}
-            >
-              <Copy size={15} /> Copy link
-            </button>
+            <div className="receive-actions">
+              <button
+                className="btn primary"
+                onClick={downloadCard}
+                disabled={saving}
+              >
+                <Download size={16} /> {saving ? "Creating…" : "Download card"}
+              </button>
+              <button
+                className="btn soft"
+                onClick={() => copy(payLink, "Payment link")}
+              >
+                <Copy size={15} /> Copy link
+              </button>
+            </div>
+
+            <div className="receive-addr">
+              <span className="panel-eyebrow">Your address</span>
+              <span className="mono receive-addr-val">{address}</span>
+              <div className="receive-addr-row">
+                <button
+                  className="btn soft sm"
+                  onClick={() => copy(address, "Address")}
+                >
+                  <Copy size={14} /> Copy
+                </button>
+                <a
+                  className="btn soft sm"
+                  href={explorerAddr(address)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink size={14} /> Explorer
+                </a>
+              </div>
+            </div>
           </div>
         </section>
         <aside className="panel send-aside">
-          <span className="panel-eyebrow">Your address</span>
-          <div className="receive-addr">
-            <span className="mono receive-addr-val">{address}</span>
-            <div className="receive-addr-row">
-              <button
-                className="btn soft sm"
-                onClick={() => copy(address, "Address")}
-              >
-                <Copy size={14} /> Copy
-              </button>
-              <a
-                className="btn soft sm"
-                href={explorerAddr(address)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink size={14} /> Explorer
-              </a>
-            </div>
-          </div>
+          <span className="panel-eyebrow">Good to know</span>
           <ul className="tips">
             <li>
               <span className="tip-dot" /> Anyone can pay you by scanning your{" "}
               <b>code</b> or opening your <b>link</b> — it prefills their Send.
-            </li>
-            <li>
-              <span className="tip-dot" /> A <b>@username</b> is easier to share
-              than a raw address, and it never changes.
             </li>
             <li>
               <span className="tip-dot" /> Payments settle on-chain straight to
@@ -2833,21 +2799,33 @@ function EarnView(props: {
         </section>
 
         <aside className="panel send-aside">
-          <span className="panel-eyebrow">How earning works</span>
-          <ul className="tips">
-            <li>
-              <span className="tip-dot" /> Just holding sBTC earns{" "}
-              <b>{baseApr.toLocaleString()}% APR</b> — no deposit step.
-            </li>
-            <li>
-              <span className="tip-dot" /> Lock sats to earn the higher{" "}
-              <b>{boostApr.toLocaleString()}% boost</b> rate.
-            </li>
-            <li>
-              <span className="tip-dot" /> Claim at maturity for your{" "}
-              <b>principal + boost yield</b>.
-            </li>
-          </ul>
+          <span className="panel-eyebrow">Lock preview</span>
+          <div className="sum-rows">
+            <div className="sum-row">
+              <span>Amount</span>
+              {amountSats > 0n ? (
+                <strong>{fmt(amountSats)} <small>sats</small></strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+            <div className="sum-row">
+              <span>Term</span>
+              {termBlocks > 0n ? (
+                <strong>{fmt(termBlocks)} <small>blocks</small></strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+            <div className="sum-row total">
+              <span>Boost at maturity</span>
+              {projYield > 0n ? (
+                <strong className="ok-inline">+{fmt(projYield)} <small>sats</small></strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+          </div>
           <div className="aside-balance">
             <span>Total in Sato</span>
             <strong>
@@ -3021,6 +2999,12 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
     }
   };
 
+  const billerLabel =
+    category === "airtime" || category === "data"
+      ? NETWORKS.find((n) => n.id === net)?.label || net
+      : category === "electricity"
+        ? DISCOS.find((d) => d.id === disco)?.label || disco
+        : CABLE.find((c) => c.id === provider)?.label || provider;
   const payDisabled =
     busy || !quote || quoting || over || !phoneOk || (isVerifiable && (!codeOk || !verified));
   const onPay = async () => {
@@ -3314,25 +3298,43 @@ function BillsView(props: { balance: bigint; btcUsd: number | null; onPaid?: () 
           </span>
         </section>
         <aside className="panel send-aside">
-          <span className="panel-eyebrow">How Pay bills works</span>
-          <ul className="tips">
-            <li>
-              <span className="tip-dot" /> Airtime, data, electricity tokens and
-              cable — all straight from your <b>sBTC</b>.
-            </li>
-            <li>
-              <span className="tip-dot" /> Priced live at the <b>BTC/NGN rate</b>{" "}
-              — you approve the exact sats.
-            </li>
-            <li>
-              <span className="tip-dot" /> Meters and smartcards are{" "}
-              <b>verified</b> with the biller before you pay.
-            </li>
-            <li>
-              <span className="tip-dot" /> Delivered by <b>VTPass</b> the moment
-              your payment confirms on-chain.
-            </li>
-          </ul>
+          <span className="panel-eyebrow">Order summary</span>
+          <div className="sum-rows">
+            <div className="sum-row">
+              <span>Service</span>
+              <strong>{billerLabel} · {CAT_NOUN[category]}</strong>
+            </div>
+            <div className="sum-row">
+              <span>To</span>
+              {(category === "airtime" || category === "data" ? phone.trim() : billersCode.trim()) ? (
+                verified ? (
+                  <strong className="ok-inline">
+                    {category === "airtime" || category === "data" ? phone.trim() : billersCode.trim()} <Check size={13} />
+                  </strong>
+                ) : (
+                  <strong>{category === "airtime" || category === "data" ? phone.trim() : billersCode.trim()}</strong>
+                )
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+            <div className="sum-row">
+              <span>Amount</span>
+              {quote ? (
+                <strong>₦{quote.amountNgn.toLocaleString()} <small>· {fmt(sats)} sats</small></strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+            <div className="sum-row total">
+              <span>You spend</span>
+              {quote && !over ? (
+                <strong>{fmt(sats)} <small>sats</small></strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+          </div>
           <div className="aside-balance">
             <span>Available</span>
             <strong>
@@ -3605,25 +3607,53 @@ function SendBankView(props: { balance: bigint; btcUsd: number | null; onPaid?: 
           </span>
         </section>
         <aside className="panel send-aside">
-          <span className="panel-eyebrow">How Cash out works</span>
-          <ul className="tips">
-            <li>
-              <span className="tip-dot" /> Pick a bank, punch in the account, and
-              we <b>confirm the name</b> before you pay.
-            </li>
-            <li>
-              <span className="tip-dot" /> Priced live at the <b>BTC/NGN rate</b>{" "}
-              — you approve the exact sats.
-            </li>
-            <li>
-              <span className="tip-dot" /> Your <b>sBTC settles on-chain</b>; the
-              naira payout follows once it confirms.
-            </li>
-            <li>
-              <span className="tip-dot" /> On testnet the payout is a{" "}
-              <b>scaffold</b> — real transfers need KYC + a funded balance.
-            </li>
-          </ul>
+          <span className="panel-eyebrow">Payout summary</span>
+          <div className="sum-rows">
+            <div className="sum-row">
+              <span>Bank</span>
+              {selectedBank ? (
+                <strong>{selectedBank.name}</strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+            <div className="sum-row">
+              <span>Account</span>
+              {account.trim() ? (
+                resolved ? (
+                  <strong className="ok-inline">····{account.trim().slice(-4)} <Check size={13} /></strong>
+                ) : (
+                  <strong>····{account.trim().slice(-4)}</strong>
+                )
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+            <div className="sum-row">
+              <span>Recipient</span>
+              {name.trim() ? (
+                <strong>{name.trim()}</strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+            <div className="sum-row">
+              <span>They get</span>
+              {quote ? (
+                <strong>₦{quote.amountNgn.toLocaleString()}</strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+            <div className="sum-row total">
+              <span>You send</span>
+              {quote && !over ? (
+                <strong>{fmt(sats)} <small>sats</small></strong>
+              ) : (
+                <strong className="sum-empty">—</strong>
+              )}
+            </div>
+          </div>
           <div className="aside-balance">
             <span>Available</span>
             <strong>
@@ -3917,19 +3947,11 @@ const shellStyles = `
 .rail-foot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:10px;}
 .rail-avatar{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#e9f0ff;color:#446aa8;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--sans);transition:transform .15s var(--ease),box-shadow .15s ease;}
 .rail-avatar:hover{transform:scale(1.06);box-shadow:var(--elev-1);}
-.chain-strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:10px 16px;margin-bottom:20px;font-size:12.5px;font-weight:700;}
-.chain-live{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-variant-numeric:tabular-nums;}
-.chain-live i{width:7px;height:7px;border-radius:50%;background:#1d7a4c;animation:tx-pulse 1.6s ease-in-out infinite;}
-.chain-sep{width:1px;height:16px;background:var(--line);}
-.chain-price{color:var(--text-muted);font-variant-numeric:tabular-nums;}
-.chain-pool{margin-left:auto;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8a6d3b;background:#faf3e3;border:1px solid #e8d9b8;padding:4px 10px;border-radius:999px;}
-.chain-pool.live{color:#0f7a3d;background:#eef8f1;border-color:#bfe6cd;}
-.chain-addr{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-family:var(--mono);font-size:12px;}
 .brand-mark{width:30px;height:30px;border-radius:9px;overflow:hidden;background:#000;display:grid;place-items:center;flex-shrink:0;}
 .brand-mark img{width:100%;height:100%;object-fit:cover;display:block;}
 .brand-name{font-weight:700;font-size:17px;letter-spacing:-.02em;}
 /* Main */
-.main{padding:40px clamp(24px,5vw,56px);max-width:1120px;width:100%;}
+.main{padding:40px clamp(24px,5vw,56px);max-width:1280px;width:100%;}
 .page-head{margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
 .page-kicker{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px;}
 .page-head h1{font-size:26px;letter-spacing:-.03em;margin:0 0 4px;}
@@ -3969,8 +3991,7 @@ const shellStyles = `
 /* Tabular figures on every money/number readout — digits stay column-aligned
    during count-up so the hero never jitters, the way Revolut/OKX balances hold. */
 .balance-num,.bh-num,.bh-sub,.stat-value,.lock-row strong,.earn-receive-total,
-.aside-balance strong,.field-usd,.receive-name,.receive-addr-val,
-.chain-live,.chain-price{font-variant-numeric:tabular-nums;}
+.aside-balance strong,.field-usd,.receive-name,.receive-addr-val{font-variant-numeric:tabular-nums;}
 
 .balance-line{display:flex;align-items:baseline;gap:8px;}
 .balance-num{font-size:46px;font-weight:700;letter-spacing:-.03em;line-height:1;}
@@ -4157,7 +4178,8 @@ const shellStyles = `
 .stat-gauge-fill{display:block;height:100%;border-radius:999px;background:var(--orange);transition:width 1s var(--ease);}
 
 /* Overview grid */
-.ov-stack{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
+.ov-stack{display:flex;flex-direction:column;gap:16px;}
+.ov-split{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;align-items:start;}
 .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;}
 .panel-head h2{font-size:15px;font-weight:700;letter-spacing:-.01em;margin:0;}
 .panel-link{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;color:var(--text-muted);background:transparent;border:0;cursor:pointer;font-family:var(--sans);transition:color .14s;}
@@ -4243,7 +4265,6 @@ const shellStyles = `
 .action-pair .btn{flex:1;}
 
 /* Quick actions — OKX-style tactile row under the balance hero */
-.ov-stack{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
 .dock{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;}
 .dock-btn{display:flex;flex-direction:column;align-items:center;gap:9px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:16px 6px;cursor:pointer;font-family:var(--sans);color:var(--ink);box-shadow:var(--elev-1);transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;animation:fade-up .45s var(--ease) both;}
 .dock-btn:nth-child(2){animation-delay:.05s;}
@@ -4265,21 +4286,35 @@ const shellStyles = `
   .dock-ico{width:42px;height:42px;}
 }
 
-/* Receive view */
-.receive-panel{display:flex;flex-direction:column;align-items:center;text-align:center;}
-.qr-frame{padding:16px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 1px 2px #16202814;line-height:0;}
-.receive-handle{display:flex;align-items:baseline;gap:1px;margin:20px 0 0;}
-.receive-at{font-size:22px;font-weight:700;color:var(--text-muted);}
-.receive-name{font-size:26px;font-weight:700;letter-spacing:-.03em;color:var(--ink);}
+/* Receive view — wide hero: oversized code left, everything else right */
+.receive-hero{display:grid;grid-template-columns:auto 1fr;gap:clamp(28px,4vw,60px);align-items:center;}
+.receive-info{display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-width:0;}
+.qr-frame{padding:20px;background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:var(--elev-2);line-height:0;transition:transform .2s var(--ease),box-shadow .2s ease;}
+.qr-frame:hover{transform:translateY(-3px) rotate(-1deg);box-shadow:var(--elev-3);}
+.receive-handle{display:flex;align-items:baseline;gap:1px;margin:0;}
+.receive-at{font-size:26px;font-weight:700;color:var(--text-muted);}
+.receive-name{font-size:32px;font-weight:800;letter-spacing:-.04em;color:var(--ink);}
 .receive-name.unnamed{font-size:18px;font-family:var(--mono);letter-spacing:0;}
-.receive-note{color:var(--text-muted);font-size:13.5px;line-height:1.6;max-width:320px;margin:10px 0 0;}
+.receive-note{color:var(--text-muted);font-size:14px;line-height:1.6;max-width:440px;margin:10px 0 0;}
 .receive-note b{color:var(--ink);font-weight:700;}
 .link-btn{border:0;background:transparent;color:var(--orange);font-weight:700;cursor:pointer;font-family:var(--sans);font-size:inherit;padding:0;text-decoration:underline;text-underline-offset:2px;}
-.receive-actions{display:flex;flex-direction:column;gap:10px;margin-top:22px;width:100%;}
-.receive-addr{margin-bottom:20px;}
+.receive-actions{display:flex;gap:10px;margin-top:22px;width:100%;max-width:480px;}
+.receive-actions .btn{flex:1;}
+.receive-addr{margin:22px 0 0;width:100%;max-width:480px;}
+.receive-addr .panel-eyebrow{display:block;margin-bottom:8px;}
 .receive-addr-val{display:block;word-break:break-all;font-size:12.5px;line-height:1.5;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;}
 .receive-addr-row{display:flex;gap:8px;}
 .receive-addr-row .btn{flex:1;}
+/* Live receipt summaries in the form asides */
+.sum-rows{display:flex;flex-direction:column;margin:2px 0 4px;}
+.sum-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:13px;}
+.sum-row:first-child{border-top:0;}
+.sum-row>span{color:var(--muted);font-weight:600;flex-shrink:0;}
+.sum-row>strong{font-weight:700;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sum-row>strong small{color:var(--muted);font-weight:600;}
+.sum-row.total>strong{font-size:14.5px;}
+.sum-empty{color:#b9b4a8;font-weight:600;}
+.ok-inline{color:#1d7a4c;display:inline-flex;align-items:center;gap:4px;}
 
 /* Small button + spinner */
 .btn.sm{padding:8px 12px;font-size:12.5px;border-radius:9px;}
@@ -4334,6 +4369,7 @@ const shellStyles = `
 
 @media(max-width:1040px){
   .send-grid{grid-template-columns:1fr;}
+  .ov-split{grid-template-columns:1fr;}
 }
 @media(max-width:640px){
   .stat-row{grid-template-columns:1fr;}
@@ -4347,6 +4383,9 @@ const shellStyles = `
   .pass-connect{margin-top:22px;}
   .rail{display:none;}
   .main{padding:28px 20px 96px;max-width:100%;}
+  .receive-hero{grid-template-columns:1fr;justify-items:center;}
+  .receive-info{align-items:center;text-align:center;}
+  .receive-addr{max-width:100%;}
   .page-head{flex-wrap:wrap;}
   .tab-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));z-index:20;box-shadow:0 -6px 20px #16202810;}
   .tab{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:transparent;color:var(--text-muted);padding:9px 6px;min-height:52px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .18s;-webkit-tap-highlight-color:transparent;}
