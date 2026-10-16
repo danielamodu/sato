@@ -411,7 +411,10 @@ export default function Home() {
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 760px)");
-    const sync = () => setIsMobile(mq.matches);
+    const sync = () => {
+      setIsMobile(mq.matches);
+      if (!mq.matches) setMenuOpen(false);
+    };
     sync();
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
