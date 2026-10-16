@@ -1,11 +1,11 @@
 // App.tsx — the Sato dapp, wired to live testnet contracts.
 //
-// A calm app-shell dashboard: left sidebar for navigation + account, a
-// main column with one view at a time (Overview, Send, Activity). The
-// goal is comfort — one clear number, plain language, generous space,
-// black-and-white first with orange kept to small accents. This web
-// layout sets the visual precedent for the mobile app (sidebar
-// collapses to a bottom tab bar).
+// A calm-money shell: slim icon rail, a live chain strip, and one centered
+// column per view. Overview leads with the living balance, a six-tile action
+// dock, then identity and activity. The goal is comfort — one clear number,
+// plain language, generous space, black-and-white first with orange kept to
+// small accents. This layout sets the visual precedent for the mobile app
+// (rail collapses to a bottom tab bar).
 //
 // Reads (balance, name lookups) hit the testnet API directly. Writes
 // (register, send, faucet) go through the connected wallet and surface
@@ -59,6 +59,7 @@ import {
   getTxStatus,
   getBalanceHistory,
   getEarnStats,
+  getChainHeight,
   earnLock,
   earnClaim,
   fundEarn,
@@ -394,6 +395,23 @@ function SatoApp() {
       });
     }
   }, [address]);
+
+  // Live chain tip for the status strip. Slow poll, best-effort — a failed
+  // fetch keeps the last height so the strip never shows a fake number.
+  const [tipHeight, setTipHeight] = useState(0n);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const h = await getChainHeight();
+      if (alive && h > 0n) setTipHeight(h);
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
 
   // Live BTC + STX prices for the USD figures across the app. Refreshes on a
   // slow interval; a failed fetch leaves them null so amounts fall back to
@@ -859,89 +877,55 @@ function SatoApp() {
     <div className="sato-shell">
       <style>{shellStyles}</style>
 
-      {/* Sidebar */}
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <span className="brand-mark">
-              <img src="/assets/sato-logo.png" alt="Sato" />
-            </span>
-          <span className="brand-name">Sato</span>
-        </div>
-
-        <div className="sidebar-scroll">
-          {navGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <span className="nav-group-label">{group.label}</span>
-              <nav className="sidebar-nav">
-                {group.items.map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    className={view === id ? "nav-item active" : "nav-item"}
-                    onClick={() => setView(id)}
-                  >
-                    <Icon size={18} />
-                    {label}
-                  </button>
-                ))}
-              </nav>
-            </div>
-          ))}
-        </div>
-
-        <div className="sidebar-promo">
-          <p className="promo-hint">Testnet — funds aren't real here.</p>
-          <button
-            className="btn soft sm full"
-            onClick={onFaucet}
-            disabled={busy === "faucet"}
-          >
-            <Plus size={15} />
-            {busy === "faucet" ? "Funding…" : "Get test sBTC"}
-          </button>
-        </div>
-
-        <div className="sidebar-account">
+      {/* Slim icon rail — the whole app fits in captions, not panels */}
+      <aside className="rail" aria-label="Primary">
+        <span className="rail-mark" title="Sato · testnet">
+          <img src="/assets/sato-logo.png" alt="" />
+        </span>
+        <nav className="rail-nav">
+          {[...tabItems, { id: "activity", label: "Activity", icon: Receipt } as const].map(
+            ({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                title={label}
+                className={view === id ? "rail-btn active" : "rail-btn"}
+                onClick={() => setView(id)}
+              >
+                <Icon size={19} />
+                <span>{label}</span>
+              </button>
+            ),
+          )}
+        </nav>
+        <div className="rail-foot">
           <button
             type="button"
-            className={view === "activity" ? "account-card active" : "account-card"}
+            className="rail-avatar"
+            title={myName ? `@${myName} — activity` : "Activity"}
             onClick={() => setView("activity")}
-            title="View your activity"
           >
-            <span className="account-avatar">{initials}</span>
-            <span className="account-meta">
-              <strong>{myName ? `@${myName}` : "Unnamed"}</strong>
-              <small>{short(address)}</small>
-            </span>
-            <Receipt size={16} className="account-card-go" />
+            {initials}
           </button>
-          <div className="account-tools">
-            <button
-              type="button"
-              className={view === "gas" ? "account-gas active" : "account-gas"}
-              onClick={() => setView("gas")}
-              title="Gas — top up the sponsor pool"
-            >
-              <Fuel size={14} /> Gas
-            </button>
-            <CopyButton value={address} />
-            <a
-              className="account-explorer icon-btn"
-              href={explorerAddr(address)}
-              target="_blank"
-              rel="noreferrer"
-              title="View on explorer"
-            >
-              <ExternalLink size={13} />
-            </a>
-            <button className="account-signout" onClick={disconnectWallet}>
-              <LogOut size={14} /> Disconnect
-            </button>
-          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Disconnect"
+            onClick={disconnectWallet}
+          >
+            <LogOut size={13} />
+          </button>
         </div>
       </aside>
 
       {/* Main column */}
       <main className="main">
+        <ChainStrip
+          height={tipHeight > 0n ? tipHeight : earn.height}
+          btcUsd={btcUsd}
+          poolLive={sponsor.poolBalance > 0n}
+          address={address}
+        />
         <div className="view" key={view}>
         {view === "overview" && (
           <Overview
@@ -1250,6 +1234,43 @@ function StatTile(props: {
           />
         </span>
       )}
+    </div>
+  );
+}
+
+// Live chain status strip: block tip, BTC price, sponsor pool, and the
+// connected address with copy. Heights/prices are as-of-last-fetch — never
+// invented — and refresh on their own slow intervals.
+function ChainStrip({
+  height,
+  btcUsd,
+  poolLive,
+  address,
+}: {
+  height: bigint;
+  btcUsd: number | null;
+  poolLive: boolean;
+  address: string;
+}) {
+  return (
+    <div className="chain-strip" role="status" aria-label="Live network status">
+      <span className="chain-live">
+        <i />
+        {height > 0n ? `Block ${fmt(height)}` : "Block …"}
+      </span>
+      <span className="chain-sep" aria-hidden="true" />
+      <span className="chain-price">
+        {btcUsd != null
+          ? `₿ $${btcUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+          : "₿ …"}
+      </span>
+      <span className={`chain-pool${poolLive ? " live" : ""}`}>
+        {poolLive ? "Pool live" : "Pool empty"}
+      </span>
+      <span className="chain-addr">
+        {short(address)}
+        <CopyButton value={address} />
+      </span>
     </div>
   );
 }
@@ -1762,32 +1783,42 @@ function WelcomeGuide(props: {
   );
 }
 
-function QuickActions(props: {
+// Action dock — the five money moves plus the faucet, one tap each.
+// Replaces the old quick-actions row with bigger, thumb-first targets.
+function Dock(props: {
   goSend: () => void;
   goReceive: () => void;
-  onFaucet: () => void;
+  goBills: () => void;
+  goCashout: () => void;
   goEarn: () => void;
+  onFaucet: () => void;
   busy: string | null;
 }) {
-  const { goSend, goReceive, onFaucet, goEarn, busy } = props;
+  const { goSend, goReceive, goBills, goCashout, goEarn, onFaucet, busy } = props;
+  const tiles = [
+    { label: "Send", icon: Send, onClick: goSend, primary: true },
+    { label: "Receive", icon: ArrowDownLeft, onClick: goReceive, primary: false },
+    { label: "Bills", icon: Smartphone, onClick: goBills, primary: false },
+    { label: "Cash out", icon: Landmark, onClick: goCashout, primary: false },
+    { label: "Earn", icon: TrendingUp, onClick: goEarn, primary: false },
+    { label: busy === "faucet" ? "Funding…" : "Faucet", icon: Plus, onClick: onFaucet, primary: false, disabled: busy === "faucet" },
+  ];
   return (
-    <div className="quick-actions">
-      <button className="qa-btn primary" onClick={goSend}>
-        <span className="qa-ico"><Send size={19} /></span>
-        <span className="qa-label">Send</span>
-      </button>
-      <button className="qa-btn" onClick={goReceive}>
-        <span className="qa-ico"><ArrowDownLeft size={19} /></span>
-        <span className="qa-label">Receive</span>
-      </button>
-      <button className="qa-btn" onClick={onFaucet} disabled={busy === "faucet"}>
-        <span className="qa-ico"><Plus size={19} /></span>
-        <span className="qa-label">{busy === "faucet" ? "Funding…" : "Add funds"}</span>
-      </button>
-      <button className="qa-btn" onClick={goEarn}>
-        <span className="qa-ico"><TrendingUp size={19} /></span>
-        <span className="qa-label">Earn</span>
-      </button>
+    <div className="dock" role="group" aria-label="Money actions">
+      {tiles.map(({ label, icon: Icon, onClick, primary, disabled }) => (
+        <button
+          key={label}
+          type="button"
+          className={`dock-btn${primary ? " primary" : ""}`}
+          onClick={onClick}
+          disabled={disabled}
+        >
+          <span className="dock-ico">
+            <Icon size={20} />
+          </span>
+          <span className="dock-label">{label}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -1834,30 +1865,16 @@ function Overview(props: {
   } = props;
 
   return (
-    <>
-      <header className="page-head">
-        <div>
-          <span className="page-kicker">Your wallet</span>
-          <h1>Overview</h1>
-          <p>Your Sato wallet on testnet.</p>
-        </div>
-        <button
-          className="btn soft"
-          onClick={onFaucet}
-          disabled={busy === "faucet"}
-        >
-          <Plus size={16} />
-          {busy === "faucet" ? "Funding…" : "Get test sBTC"}
-        </button>
-      </header>
-
+    <div className="ov-stack">
       <BalanceHero balance={balance} btcUsd={btcUsd} events={events} />
 
-      <QuickActions
+      <Dock
         goSend={goSend}
         goReceive={goReceive}
-        onFaucet={onFaucet}
+        goBills={() => go("bills")}
+        goCashout={() => go("cashout")}
         goEarn={() => go("earn")}
+        onFaucet={onFaucet}
         busy={busy}
       />
 
@@ -1871,98 +1888,79 @@ function Overview(props: {
         hydrated={hydrated}
       />
 
-      <div className="stat-row two">
-        <StatTile
-          label="Transactions"
-          icon={Hash}
-          value={txLoading ? "—" : undefined}
-          countTo={txLoading ? undefined : txs.length}
-          sub="Recent contract calls"
-        />
-        <StatTile
-          label="Username"
-          icon={AtSign}
-          value={myName ? `@${myName}` : "Unclaimed"}
-          sub={myName ? "Your Sato handle" : "Claim one below"}
-        />
-      </div>
-      <div className="ov-grid">
-        <section className="panel">
-          <div className="panel-head">
-            <h2>Recent activity</h2>
-            <button className="panel-link" onClick={goActivity}>
-              View all <ArrowUpRight size={13} />
-            </button>
+      <section className="panel" id="claim-username">
+        <span className="panel-eyebrow">Your username</span>
+        {myName ? (
+          <div className="claimed-row">
+            <span className="claimed-badge">
+              <Check size={15} /> @{myName}
+            </span>
+            <span className="claimed-note">
+              People can send to you by this name.
+            </span>
           </div>
-          <TxTable txs={txs} loading={txLoading} address={address} limit={5} />
-        </section>
-
-        <div className="col-stack">
-          <section className="panel" id="claim-username">
-            <span className="panel-eyebrow">Your username</span>
-            {myName ? (
-              <div className="claimed-row">
-                <span className="claimed-badge">
-                  <Check size={15} /> @{myName}
-                </span>
-                <span className="claimed-note">
-                  People can send to you by this name.
-                </span>
+        ) : (
+          <>
+            <p className="panel-lede">
+              Claim a username so people can pay you without an address.
+            </p>
+            <div className="inline-form">
+              <div className="text-field">
+                <span className="field-at">@</span>
+                <input
+                  className="field-input"
+                  placeholder="yourname"
+                  value={regInput}
+                  maxLength={32}
+                  onChange={(e) =>
+                    setRegInput(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
+                    )
+                  }
+                />
               </div>
-            ) : (
-              <>
-                <p className="panel-lede">
-                  Claim a username so people can pay you without an address.
-                </p>
-                <div className="inline-form">
-                  <div className="text-field">
-                    <span className="field-at">@</span>
-                    <input
-                      className="field-input"
-                      placeholder="yourname"
-                      value={regInput}
-                      maxLength={32}
-                      onChange={(e) =>
-                        setRegInput(
-                          e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
-                        )
-                      }
-                    />
-                  </div>
-                  <button
-                    className="btn primary"
-                    onClick={onRegister}
-                    disabled={
-                      busy === "register" ||
-                      !regInput.trim() ||
-                      nameState === "checking" ||
-                      nameState === "taken"
-                    }
-                  >
-                    {busy === "register" ? "Claiming…" : "Claim"}
-                  </button>
-                </div>
-                {regInput.trim() && nameState === "checking" && (
-                  <span className="field-hint muted">
-                    Checking the registry…
-                  </span>
-                )}
-                {nameState === "available" && (
-                  <span className="field-hint ok">
-                    <Check size={13} /> @{regInput.trim()} is available
-                  </span>
-                )}
-                {nameState === "taken" && (
-                  <span className="field-hint miss">
-                    @{regInput.trim()} is already taken
-                  </span>
-                )}
-              </>
+              <button
+                className="btn primary"
+                onClick={onRegister}
+                disabled={
+                  busy === "register" ||
+                  !regInput.trim() ||
+                  nameState === "checking" ||
+                  nameState === "taken"
+                }
+              >
+                {busy === "register" ? "Claiming…" : "Claim"}
+              </button>
+            </div>
+            {regInput.trim() && nameState === "checking" && (
+              <span className="field-hint muted">
+                Checking the registry…
+              </span>
             )}
-          </section>
+            {nameState === "available" && (
+              <span className="field-hint ok">
+                <Check size={13} /> @{regInput.trim()} is available
+              </span>
+            )}
+            {nameState === "taken" && (
+              <span className="field-hint miss">
+                @{regInput.trim()} is already taken
+              </span>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <h2>Recent activity</h2>
+          <button className="panel-link" onClick={goActivity}>
+            View all <ArrowUpRight size={13} />
+          </button>
         </div>
-      </div>
-    </>
+        <TxTable txs={txs} loading={txLoading} address={address} limit={5} />
+      </section>
+    </div>
   );
 }
 
@@ -3852,7 +3850,7 @@ function ActivityView(props: {
 
 // Scoped styles using Sato's palette (defined in index.css :root).
 const shellStyles = `
-.sato-shell{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--sans);display:grid;grid-template-columns:256px 1fr;}
+.sato-shell{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--sans);display:grid;grid-template-columns:92px 1fr;}
 .sato-shell *{box-sizing:border-box;}
 
 /* Auth (disconnected) — split sign-in */
@@ -3908,43 +3906,28 @@ const shellStyles = `
 /* Brand panel */
 
 /* Sidebar */
-.sidebar{border-right:1px solid var(--line);padding:24px 16px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;background:var(--paper);}
-.sidebar-brand{display:flex;align-items:center;gap:9px;padding:4px 10px 24px;}
+.rail{border-right:1px solid var(--line);padding:18px 10px;display:flex;flex-direction:column;align-items:center;gap:8px;position:sticky;top:0;height:100vh;background:var(--paper);}
+.rail-mark{width:34px;height:34px;border-radius:10px;overflow:hidden;background:#000;display:grid;place-items:center;flex-shrink:0;margin-bottom:8px;}
+.rail-mark img{width:100%;height:100%;object-fit:cover;display:block;}
+.rail-nav{display:flex;flex-direction:column;gap:2px;width:100%;}
+.rail-btn{display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:9px 2px;border-radius:12px;font-size:9.5px;font-weight:700;letter-spacing:.02em;cursor:pointer;font-family:var(--sans);transition:background .14s,color .14s;}
+.rail-btn:hover{background:#ecebe5;color:var(--ink);}
+.rail-btn.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
+.rail-btn.active svg{color:var(--orange);}
+.rail-foot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:10px;}
+.rail-avatar{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#e9f0ff;color:#446aa8;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--sans);transition:transform .15s var(--ease),box-shadow .15s ease;}
+.rail-avatar:hover{transform:scale(1.06);box-shadow:var(--elev-1);}
+.chain-strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:10px 16px;margin-bottom:20px;font-size:12.5px;font-weight:700;}
+.chain-live{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-variant-numeric:tabular-nums;}
+.chain-live i{width:7px;height:7px;border-radius:50%;background:#1d7a4c;animation:tx-pulse 1.6s ease-in-out infinite;}
+.chain-sep{width:1px;height:16px;background:var(--line);}
+.chain-price{color:var(--text-muted);font-variant-numeric:tabular-nums;}
+.chain-pool{margin-left:auto;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8a6d3b;background:#faf3e3;border:1px solid #e8d9b8;padding:4px 10px;border-radius:999px;}
+.chain-pool.live{color:#0f7a3d;background:#eef8f1;border-color:#bfe6cd;}
+.chain-addr{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-family:var(--mono);font-size:12px;}
 .brand-mark{width:30px;height:30px;border-radius:9px;overflow:hidden;background:#000;display:grid;place-items:center;flex-shrink:0;}
 .brand-mark img{width:100%;height:100%;object-fit:cover;display:block;}
 .brand-name{font-weight:700;font-size:17px;letter-spacing:-.02em;}
-.sidebar-scroll{flex:1;display:flex;flex-direction:column;gap:16px;min-height:0;overflow-y:auto;overflow-x:hidden;margin:0 -4px;padding:0 4px;scrollbar-width:none;-ms-overflow-style:none;}
-.sidebar-scroll::-webkit-scrollbar{width:0;height:0;display:none;}
-.nav-group-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:0 12px 8px;}
-.sidebar-nav{display:flex;flex-direction:column;gap:2px;}
-.sidebar-promo{border:1px solid var(--line);background:var(--white);border-radius:12px;padding:12px;margin:12px 0;}
-.promo-hint{font-size:12px;color:var(--text-muted);line-height:1.45;margin:0 0 9px;}
-.sidebar-promo strong{display:block;font-size:13px;letter-spacing:-.01em;margin-bottom:4px;}
-.sidebar-promo p{font-size:12px;color:var(--text-muted);line-height:1.5;margin:0 0 11px;}
-.nav-item{display:flex;align-items:center;gap:11px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:11px 12px;border-radius:11px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:background .14s,color .14s;text-align:left;}
-.nav-item:hover{background:#ecebe5;color:var(--ink);}
-.nav-item.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
-.nav-item.active svg{color:var(--ink);}
-.nav-item.active::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--orange);margin-left:auto;flex-shrink:0;}
-.sidebar-account{border-top:1px solid var(--line);padding-top:12px;margin-top:12px;}
-.account-card{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:8px;border-radius:11px;cursor:pointer;font-family:var(--sans);text-align:left;transition:background .14s,box-shadow .14s;}
-.account-card:hover{background:#ecebe5;}
-.account-card.active{background:var(--white);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
-.account-avatar{width:34px;height:34px;border-radius:10px;background:#e9f0ff;color:#446aa8;display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;}
-.account-meta{display:flex;flex-direction:column;min-width:0;flex:1;}
-.account-meta strong{font-size:13.5px;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.account-meta small{font-size:11.5px;color:var(--muted);font-family:var(--mono);}
-.account-card-go{color:var(--muted);flex-shrink:0;transition:color .14s;}
-.account-card:hover .account-card-go,.account-card.active .account-card-go{color:var(--ink);}
-.account-tools{display:flex;align-items:center;gap:6px;padding:8px 4px 0;}
-.account-gas{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--text-muted);padding:6px 9px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
-.account-gas:hover{color:var(--ink);background:#ecebe5;}
-.account-gas.active{color:var(--ink);background:var(--white);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
-.account-gas svg{color:#9a958a;}
-.account-gas.active svg{color:var(--orange);}
-.account-signout{display:flex;align-items:center;gap:7px;margin-left:auto;border:0;background:transparent;color:var(--text-muted);padding:6px 9px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:color .14s,background .14s;}
-.account-signout:hover{color:var(--ink);background:#ecebe5;}
-
 /* Main */
 .main{padding:40px clamp(24px,5vw,56px);max-width:1120px;width:100%;}
 .page-head{margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
@@ -3987,7 +3970,7 @@ const shellStyles = `
    during count-up so the hero never jitters, the way Revolut/OKX balances hold. */
 .balance-num,.bh-num,.bh-sub,.stat-value,.lock-row strong,.earn-receive-total,
 .aside-balance strong,.field-usd,.receive-name,.receive-addr-val,
-.account-meta small{font-variant-numeric:tabular-nums;}
+.chain-live,.chain-price{font-variant-numeric:tabular-nums;}
 
 .balance-line{display:flex;align-items:baseline;gap:8px;}
 .balance-num{font-size:46px;font-weight:700;letter-spacing:-.03em;line-height:1;}
@@ -4162,7 +4145,6 @@ const shellStyles = `
 
 /* Stat tiles */
 .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;}
-.stat-row.two{grid-template-columns:repeat(2,1fr);}
 .stat-tile{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:9px;box-shadow:var(--elev-1);transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;}
 .stat-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .stat-label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
@@ -4175,8 +4157,7 @@ const shellStyles = `
 .stat-gauge-fill{display:block;height:100%;border-radius:999px;background:var(--orange);transition:width 1s var(--ease);}
 
 /* Overview grid */
-.ov-grid{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;align-items:start;}
-.col-stack{display:flex;flex-direction:column;gap:16px;}
+.ov-stack{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
 .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;}
 .panel-head h2{font-size:15px;font-weight:700;letter-spacing:-.01em;margin:0;}
 .panel-link{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;color:var(--text-muted);background:transparent;border:0;cursor:pointer;font-family:var(--sans);transition:color .14s;}
@@ -4262,21 +4243,26 @@ const shellStyles = `
 .action-pair .btn{flex:1;}
 
 /* Quick actions — OKX-style tactile row under the balance hero */
-.quick-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
-.qa-btn{display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:17px 12px;cursor:pointer;font-family:var(--sans);color:var(--ink);box-shadow:var(--elev-1);transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;}
-.qa-btn:not(:disabled):hover{transform:translateY(-2px);border-color:#cdd0ca;box-shadow:var(--elev-2);}
-.qa-btn:not(:disabled):active{transform:translateY(0);box-shadow:var(--elev-1);}
-.qa-btn:disabled{opacity:.55;cursor:default;}
-.qa-ico{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:var(--paper);border:1px solid var(--line);color:var(--ink);transition:color .16s,border-color .16s,transform .18s var(--ease);}
-.qa-btn:not(:disabled):hover .qa-ico{color:var(--orange);border-color:#cdd0ca;transform:scale(1.05);}
-.qa-btn.primary .qa-ico{background:linear-gradient(180deg,#1b2433 0%,var(--ink) 100%);border-color:var(--ink);color:#fff;box-shadow:0 1px 2px rgba(13,17,23,.28),0 8px 18px -8px rgba(13,17,23,.5);}
-.qa-btn.primary:not(:disabled):hover .qa-ico{color:#fff;transform:scale(1.05);}
-.qa-label{font-size:13px;font-weight:700;letter-spacing:-.01em;}
+.ov-stack{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
+.dock{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;}
+.dock-btn{display:flex;flex-direction:column;align-items:center;gap:9px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:16px 6px;cursor:pointer;font-family:var(--sans);color:var(--ink);box-shadow:var(--elev-1);transition:transform .18s var(--ease),box-shadow .18s,border-color .18s;animation:fade-up .45s var(--ease) both;}
+.dock-btn:nth-child(2){animation-delay:.05s;}
+.dock-btn:nth-child(3){animation-delay:.1s;}
+.dock-btn:nth-child(4){animation-delay:.15s;}
+.dock-btn:nth-child(5){animation-delay:.2s;}
+.dock-btn:nth-child(6){animation-delay:.25s;}
+.dock-btn:not(:disabled):hover{transform:translateY(-3px);border-color:#cdd0ca;box-shadow:var(--elev-2);}
+.dock-btn:not(:disabled):active{transform:scale(.95);}
+.dock-btn:disabled{opacity:.55;cursor:default;}
+.dock-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;background:var(--paper);border:1px solid var(--line);color:var(--ink);transition:color .16s,border-color .16s,transform .18s var(--ease);}
+.dock-btn:not(:disabled):hover .dock-ico{color:var(--orange);border-color:#cdd0ca;transform:scale(1.06);}
+.dock-btn.primary .dock-ico{background:linear-gradient(180deg,#1b2433 0%,var(--ink) 100%);border-color:var(--ink);color:#fff;box-shadow:0 1px 2px rgba(13,17,23,.28),0 8px 18px -8px rgba(13,17,23,.5);}
+.dock-btn.primary:not(:disabled):hover .dock-ico{color:#fff;transform:scale(1.06);}
+.dock-label{font-size:12px;font-weight:700;letter-spacing:-.01em;}
 @media(max-width:640px){
-  .quick-actions{gap:8px;}
-  .qa-btn{padding:14px 8px;border-radius:14px;gap:8px;}
-  .qa-ico{width:42px;height:42px;border-radius:13px;}
-  .qa-label{font-size:12px;}
+  .dock{grid-template-columns:repeat(3,1fr);gap:8px;}
+  .dock-btn{padding:14px 6px;border-radius:14px;}
+  .dock-ico{width:42px;height:42px;}
 }
 
 /* Receive view */
@@ -4347,10 +4333,10 @@ const shellStyles = `
 .tab-bar{display:none;}
 
 @media(max-width:1040px){
-  .ov-grid,.send-grid{grid-template-columns:1fr;}
+  .send-grid{grid-template-columns:1fr;}
 }
 @media(max-width:640px){
-  .stat-row,.stat-row.two{grid-template-columns:1fr;}
+  .stat-row{grid-template-columns:1fr;}
 }
 @media(max-width:800px){
   .sato-shell{grid-template-columns:1fr;}
@@ -4359,7 +4345,7 @@ const shellStyles = `
   .pass-face{padding:22px;}
   .pass-tilt{margin-top:24px;}
   .pass-connect{margin-top:22px;}
-  .sidebar{display:none;}
+  .rail{display:none;}
   .main{padding:28px 20px 96px;max-width:100%;}
   .page-head{flex-wrap:wrap;}
   .tab-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));z-index:20;box-shadow:0 -6px 20px #16202810;}
@@ -4381,7 +4367,7 @@ const shellStyles = `
   .bh-num{font-size:32px;}
 }
 @media(prefers-reduced-motion:reduce){
-  .view>*,.tx-list .tx-row,.sky-line>span,.pass-spin,.pass-sheen,.pa,.pass-main>*,.spin,.lock-progress i,.tx-detail,.tx-step.active i,.quote-skel i{animation:none !important;}
+  .view>*,.tx-list .tx-row,.dock-btn,.sky-line>span,.pass-spin,.pass-sheen,.pa,.pass-main>*,.spin,.lock-progress i,.tx-detail,.tx-step.active i,.quote-skel i{animation:none !important;}
   .pass-flip,.pass-tilt{transition:none !important;}
   *{transition-duration:.01ms !important;}
 }
