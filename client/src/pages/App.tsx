@@ -248,9 +248,8 @@ function SatoApp() {
   const [btcUsd, setBtcUsd] = useState<number | null>(null);
   const [stxUsd, setStxUsd] = useState<number | null>(null);
   const [events, setEvents] = useState<BalanceEvent[]>([]);
-  // Login pass tilt target.
-  const authReduced = usePrefersReducedMotion();
-  const skyTiltRef = useRef<HTMLDivElement>(null);
+  // Login pass deep-3D state (see spin rig below).
+  const [flipped, setFlipped] = useState(false);
 
   // Pay bills (airtime/data/electricity/cable) owns its own state inside
   // BillsView — it only needs balance + rate from here.
@@ -655,21 +654,47 @@ function SatoApp() {
     }
   };
 
-  // Tilt the login preview card toward the cursor — direct DOM writes, no
-  // re-renders, so it stays smooth even on modest hardware.
-  const skyTilt = (x: number, y: number) => {
-    if (authReduced) return;
-    const el = skyTiltRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const px = (x - r.left) / r.width - 0.5;
-    const py = (y - r.top) / r.height - 0.5;
-    el.style.setProperty("--rx", `${(-py * 9).toFixed(2)}deg`);
-    el.style.setProperty("--ry", `${(px * 11).toFixed(2)}deg`);
+  // Deep-3D spin rig for the pass: drag to spin with momentum, tap to flip.
+  // Writes transforms directly (no re-renders); one rAF loop, parked idle.
+  const flipRef = useRef<HTMLDivElement>(null);
+  const spin = useRef({
+    y: 0, x: 0, vx: 0, ly: 0, ox: 0, oy: 0, sx: 0, sy: 0, moved: 0,
+    target: null as number | null, raf: 0, dragging: false,
+  });
+  const paintSpin = () => {
+    flipRef.current?.style.setProperty(
+      "transform",
+      `rotateX(${spin.current.x.toFixed(2)}deg) rotateY(${spin.current.y.toFixed(2)}deg)`,
+    );
   };
-  const skyTiltReset = () => {
-    skyTiltRef.current?.style.setProperty("--rx", "0deg");
-    skyTiltRef.current?.style.setProperty("--ry", "0deg");
+  const spinLoop = () => {
+    const s = spin.current;
+    if (s.target != null) {
+      s.vx += (s.target - s.y) * 0.12;
+      s.vx *= 0.82;
+      s.y += s.vx;
+      if (Math.abs(s.target - s.y) < 0.1 && Math.abs(s.vx) < 0.1) {
+        s.y = s.target;
+        s.vx = 0;
+        s.target = null;
+      }
+    } else if (!s.dragging) {
+      s.y += s.vx;
+      s.vx *= 0.95;
+      s.x += (0 - s.x) * 0.08;
+      if (Math.abs(s.vx) < 0.02 && Math.abs(s.x) < 0.05) {
+        s.vx = 0;
+        s.x = 0;
+        paintSpin();
+        s.raf = 0;
+        return;
+      }
+    }
+    paintSpin();
+    s.raf = requestAnimationFrame(spinLoop);
+  };
+  const kickSpin = () => {
+    if (!spin.current.raf) spin.current.raf = requestAnimationFrame(spinLoop);
   };
 
   // --- disconnected: testnet pass — one object, minimal copy ----
@@ -677,6 +702,11 @@ function SatoApp() {
     return (
       <div className="sato-shell auth-pass">
         <style>{shellStyles}</style>
+        <div className="pass-aurora" aria-hidden="true">
+          <i className="pa a1" />
+          <i className="pa a2" />
+        </div>
+        <div className="pass-noise" aria-hidden="true" />
 
         <header className="pass-nav">
           <span className="auth-brand">
@@ -701,23 +731,79 @@ function SatoApp() {
 
           <div
             className="pass-tilt"
-            ref={skyTiltRef}
             aria-hidden="true"
-            onMouseMove={(e) => skyTilt(e.clientX, e.clientY)}
-            onMouseLeave={skyTiltReset}
+            onMouseMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              e.currentTarget.style.setProperty("--gx", `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`);
+              e.currentTarget.style.setProperty("--gy", `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%`);
+            }}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const s = spin.current;
+              s.dragging = true;
+              s.target = null;
+              s.vx = 0;
+              s.sx = e.clientX;
+              s.sy = e.clientY;
+              s.ox = s.y;
+              s.oy = s.x;
+              s.ly = s.y;
+              s.moved = 0;
+              kickSpin();
+            }}
+            onPointerMove={(e) => {
+              const s = spin.current;
+              if (!s.dragging) return;
+              const dx = e.clientX - s.sx;
+              const dy = e.clientY - s.sy;
+              s.moved = Math.max(s.moved, Math.abs(dx) + Math.abs(dy));
+              const ny = s.ox + dx * 0.4;
+              s.vx = ny - s.ly;
+              s.ly = ny;
+              s.y = ny;
+              s.x = Math.max(-20, Math.min(20, s.oy - dy * 0.25));
+            }}
+            onPointerUp={() => {
+              const s = spin.current;
+              if (!s.dragging) return;
+              s.dragging = false;
+              if (s.moved < 8) {
+                const back = Math.round((s.y - 180) / 360) * 360 + 180;
+                const front = Math.round(s.y / 360) * 360;
+                s.target = flipped ? front : back;
+                setFlipped(!flipped);
+              }
+            }}
+            onPointerCancel={() => {
+              spin.current.dragging = false;
+            }}
+            onDragStart={(e) => e.preventDefault()}
           >
-            <div className="pass-card">
-              <div className="pass-row">
-                <span className="pass-micro">Testnet pass</span>
-                <span className="pass-status"><i />Not connected</span>
-              </div>
-              <div className="pass-chip" />
-              <div className="pass-row pass-bottom">
-                <span className="pass-holder">Guest</span>
-                <span className="pass-word">sato</span>
+            <div className="pass-spin">
+              <div className="pass-flip" ref={flipRef}>
+                <div className="pass-face front">
+                  <div className="pass-sheen" />
+                  <div className="pass-row">
+                    <span className="pass-micro">Testnet pass</span>
+                    <span className="pass-status"><i />Not connected</span>
+                  </div>
+                  <div className="pass-chip" />
+                  <div className="pass-row pass-bottom">
+                    <span className="pass-holder">Guest</span>
+                    <span className="pass-word">sato</span>
+                  </div>
+                </div>
+                <div className="pass-face back">
+                  <div className="pass-stripe" />
+                  <p className="pass-back-note">Testnet · no real funds.<br />You approve every action.</p>
+                  <span className="pass-word small">sato</span>
+                </div>
               </div>
             </div>
           </div>
+          <p className="pass-hint">
+            {flipped ? "Nice — click to flip back" : "Drag to spin · click to flip"}
+          </p>
 
           <button
             className="btn primary lg pass-connect"
@@ -3781,10 +3867,28 @@ const shellStyles = `
 .pass-main{width:100%;max-width:640px;margin:0 auto;padding:0 clamp(20px,4vw,44px);display:flex;flex:1 1 auto;min-height:0;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
 .pass-title{font-size:clamp(44px,min(11vw,9svh),88px);line-height:.96;letter-spacing:-.055em;font-weight:800;margin:0;}
 .pass-lede{color:var(--text-muted);font-size:15px;margin:14px 0 0;}
-.pass-tilt{margin-top:30px;width:min(100%,380px);transform:perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .18s ease-out;}
-.pass-card{position:relative;overflow:hidden;background:linear-gradient(150deg,#161d29 0%,#0d1117 60%,#1a1410 100%);border-radius:22px;padding:26px;text-align:left;color:#fff;box-shadow:0 30px 70px rgba(13,17,23,.28);animation:pass-float 7s ease-in-out infinite;}
+.pass-aurora{position:absolute;inset:0;overflow:hidden;pointer-events:none;}
+.pa{position:absolute;border-radius:50%;filter:blur(90px);}
+.pa.a1{width:55vmax;height:55vmax;background:rgba(246,195,154,.4);top:-18vmax;right:-14vmax;animation:pa-drift 26s ease-in-out infinite alternate;}
+.pa.a2{width:50vmax;height:50vmax;background:rgba(185,205,242,.4);bottom:-20vmax;left:-16vmax;animation:pa-drift 32s ease-in-out infinite alternate-reverse;}
+@keyframes pa-drift{from{translate:-6vmax 2vmax;}to{translate:6vmax -3vmax;}}
+.pass-noise{position:absolute;inset:0;pointer-events:none;opacity:.05;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"/></filter><rect width="160" height="160" filter="url(%23n)" opacity="0.6"/></svg>');}
+.pass-nav,.pass-main,.pass-foot{position:relative;z-index:1;}
+.pass-tilt{margin-top:30px;width:min(100%,380px);perspective:1200px;cursor:grab;touch-action:none;}
+.pass-tilt:active{cursor:grabbing;}
+.pass-spin{animation:pass-float 7s ease-in-out infinite;}
 @keyframes pass-float{0%,100%{transform:translateY(0);}50%{transform:translateY(-8px);}}
-.pass-card::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(420px circle at var(--gx,70%) var(--gy,10%),rgba(255,255,255,.14),transparent 60%);pointer-events:none;}
+.pass-flip{position:relative;transform-style:preserve-3d;will-change:transform;}
+.pass-flip::before{content:"";position:absolute;inset:8px 2px;border-radius:18px;background:linear-gradient(180deg,#2b313c,#0b0e14);transform:translateZ(-13px);}
+.pass-face{position:relative;overflow:hidden;background:linear-gradient(150deg,#161d29 0%,#0d1117 60%,#1a1410 100%);border-radius:22px;padding:26px;text-align:left;color:#fff;box-shadow:0 30px 70px rgba(13,17,23,.28);backface-visibility:hidden;-webkit-backface-visibility:hidden;}
+.pass-face.front::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(420px circle at var(--gx,70%) var(--gy,10%),rgba(255,255,255,.14),transparent 60%);pointer-events:none;}
+.pass-face.back{position:absolute;inset:0;transform:rotateY(180deg);display:flex;flex-direction:column;}
+.pass-sheen{position:absolute;top:-20%;bottom:-20%;left:0;width:45%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.16),transparent);transform:translateX(-160%) skewX(-12deg);animation:pass-sheen 7s ease-in-out infinite;pointer-events:none;}
+@keyframes pass-sheen{0%{transform:translateX(-160%) skewX(-12deg);}22%{transform:translateX(380%) skewX(-12deg);}100%{transform:translateX(380%) skewX(-12deg);}}
+.pass-stripe{height:46px;background:#000;margin:2px -26px 0;}
+.pass-back-note{font-size:12.5px;line-height:1.6;color:#8d9aaa;margin:auto 0 0;}
+.pass-word.small{font-size:20px;margin-top:8px;}
+.pass-hint{margin-top:16px;font-size:11.5px;font-weight:700;color:var(--muted);}
 .pass-row{display:flex;align-items:center;justify-content:space-between;}
 .pass-micro{font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#8d9aaa;}
 .pass-status{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a8e7c4;}
@@ -4252,7 +4356,7 @@ const shellStyles = `
   .sato-shell{grid-template-columns:1fr;}
   .pass-main{padding-top:0;}
   .pass-title{font-size:clamp(40px,min(13vw,10svh),64px);}
-  .pass-card{padding:22px;}
+  .pass-face{padding:22px;}
   .pass-tilt{margin-top:24px;}
   .pass-connect{margin-top:22px;}
   .sidebar{display:none;}
@@ -4277,7 +4381,8 @@ const shellStyles = `
   .bh-num{font-size:32px;}
 }
 @media(prefers-reduced-motion:reduce){
-  .view>*,.tx-list .tx-row,.sky-line>span,.pass-card,.pass-main>*,.spin,.lock-progress i,.tx-detail,.tx-step.active i,.quote-skel i{animation:none !important;}
+  .view>*,.tx-list .tx-row,.sky-line>span,.pass-spin,.pass-sheen,.pa,.pass-main>*,.spin,.lock-progress i,.tx-detail,.tx-step.active i,.quote-skel i{animation:none !important;}
+  .pass-flip,.pass-tilt{transition:none !important;}
   *{transition-duration:.01ms !important;}
 }
 `;
