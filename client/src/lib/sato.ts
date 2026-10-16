@@ -495,6 +495,14 @@ export async function getEarnStats(who: string): Promise<EarnStats> {
   return { liquid, locked: lock.amount, lockValue, lockUnlock: lock.unlock, height, baseRateBps, boostRateBps, totalSupply };
 }
 
+// Live Stacks tip height for the chain strip. Best-effort: 0n when offline.
+export async function getChainHeight(): Promise<bigint> {
+  try {
+    const r = await fetch(`${API}/v2/info`);
+    return r.ok ? toBigInt((await r.json())?.stacks_tip_height) : 0n;
+  } catch { return 0n; }
+}
+
 // Lock sats from the liquid balance into the boost tier for `termBlocks`. The
 // locked sats leave the liquid balance (they stop earning the base rate and
 // start earning the higher boost rate) until the term elapses. One lock at a
