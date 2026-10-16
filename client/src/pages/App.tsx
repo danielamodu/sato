@@ -202,56 +202,6 @@ function txidOf(res: any): string | undefined {
 
 type View = "overview" | "send" | "receive" | "bills" | "cashout" | "earn" | "gas" | "activity";
 
-// Login preview tabs — each drives the floating mock card on the sign-in
-// screen. Decorative only (aria-hidden); the chips are the accessible control.
-const CAP_TABS: {
-  id: string;
-  label: string;
-  icon: typeof AtSign;
-  eyebrow: string;
-  figure: string;
-  figunit: string;
-  rows: { icon: typeof AtSign; bg: string; t: string; s: string }[];
-  cta: string;
-}[] = [
-  {
-    id: "send", label: "Send to @names", icon: AtSign,
-    eyebrow: "Available balance", figure: "1,000,000", figunit: "sats",
-    rows: [
-      { icon: AtSign, bg: "#f15a24", t: "@szr", s: "Sending to" },
-      { icon: Check, bg: "#1d7a4c", t: "Fee $0.40", s: "Shown upfront" },
-    ],
-    cta: "Send sBTC",
-  },
-  {
-    id: "bills", label: "Pay bills", icon: Smartphone,
-    eyebrow: "This month", figure: "₦2,500", figunit: "in bills",
-    rows: [
-      { icon: Smartphone, bg: "#111925", t: "MTN Airtime", s: "₦500 · instant" },
-      { icon: Lightbulb, bg: "#c4502a", t: "Ikeja Electric", s: "₦2,000 · token" },
-    ],
-    cta: "Pay bills",
-  },
-  {
-    id: "earn", label: "Earn yield", icon: TrendingUp,
-    eyebrow: "Boost rate", figure: "4.8%", figunit: "APR",
-    rows: [
-      { icon: Wallet, bg: "#1d7a4c", t: "Balance working", s: "Auto-earn daily" },
-      { icon: Coins, bg: "#f15a24", t: "+1,240 sats", s: "Projected this month" },
-    ],
-    cta: "Start earning",
-  },
-  {
-    id: "cashout", label: "Cash out", icon: Landmark,
-    eyebrow: "To your bank", figure: "₦50,000", figunit: "GTB ····42",
-    rows: [
-      { icon: Landmark, bg: "#111925", t: "Rate locked 30s", s: "No surprises" },
-      { icon: Zap, bg: "#c4502a", t: "Gas covered", s: "By the Sato pool" },
-    ],
-    cta: "Cash out",
-  },
-];
-
 function SatoApp() {
   const { address, isConnecting, connectWallet, disconnectWallet } = useStacks();
 
@@ -298,19 +248,9 @@ function SatoApp() {
   const [btcUsd, setBtcUsd] = useState<number | null>(null);
   const [stxUsd, setStxUsd] = useState<number | null>(null);
   const [events, setEvents] = useState<BalanceEvent[]>([]);
-  // Login preview carousel (decorative): which capability tab is showing.
-  const [capTab, setCapTab] = useState(0);
-  const [capPaused, setCapPaused] = useState(false);
+  // Login pass tilt target.
   const authReduced = usePrefersReducedMotion();
   const skyTiltRef = useRef<HTMLDivElement>(null);
-
-  // Auto-cycle the login preview cards; pauses while the visitor hovers the
-  // chips or the card, and never runs for reduced-motion visitors.
-  useEffect(() => {
-    if (address || authReduced || capPaused) return;
-    const t = setInterval(() => setCapTab((v) => (v + 1) % CAP_TABS.length), 4500);
-    return () => clearInterval(t);
-  }, [address, authReduced, capPaused]);
 
   // Pay bills (airtime/data/electricity/cable) owns its own state inside
   // BillsView — it only needs balance + rate from here.
@@ -732,20 +672,13 @@ function SatoApp() {
     skyTiltRef.current?.style.setProperty("--ry", "0deg");
   };
 
-  // --- disconnected: sky-terminal sign-in, matching the landing page ----
+  // --- disconnected: testnet pass — one object, minimal copy ----
   if (!address) {
-    const cap = CAP_TABS[capTab];
     return (
-      <div className="sato-shell auth-sky">
+      <div className="sato-shell auth-pass">
         <style>{shellStyles}</style>
-        <div className="skyclouds" aria-hidden="true">
-          <i className="sc c1" />
-          <i className="sc c2" />
-          <i className="sc c3" />
-          <i className="sc c4" />
-        </div>
 
-        <header className="sky-nav">
+        <header className="pass-nav">
           <span className="auth-brand">
             <span className="brand-mark">
               <img src="/assets/sato-logo.png" alt="Sato" />
@@ -753,106 +686,59 @@ function SatoApp() {
             <span className="brand-name">sato</span>
             <span className="brand-badge">testnet</span>
           </span>
-          <a className="sky-back" href="https://satoxbt.com">
+          <a className="pass-back" href="https://satoxbt.com">
             Back to site <ArrowUpRight size={14} />
           </a>
         </header>
 
-        <main className="sky-main">
-          <div className="sky-copy">
-            <span className="sky-eyebrow">Testnet preview · live contracts</span>
-            <h1 className="sky-title" aria-label="Send Bitcoin like a text.">
-              <span className="sky-line" aria-hidden="true"><span>Send Bitcoin</span></span>
-              <span className="sky-line" aria-hidden="true"><span>like a text.</span></span>
-            </h1>
-            <p className="sky-lede">
-              Connect a Stacks wallet to try Sato on testnet.
-            </p>
-
-            <div
-              className="sky-chips"
-              role="tablist"
-              aria-label="Preview what you can do"
-              onMouseEnter={() => setCapPaused(true)}
-              onMouseLeave={() => setCapPaused(false)}
-            >
-              {CAP_TABS.map((c, i) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={capTab === i}
-                  className={`sky-chip${capTab === i ? " active" : ""}`}
-                  onClick={() => {
-                    setCapTab(i);
-                    setCapPaused(true);
-                  }}
-                >
-                  <c.icon size={14} />
-                  {c.label}
-                </button>
-              ))}
-            </div>
-
-            <button
-              className="btn primary lg full sky-connect"
-              onClick={connectWallet}
-              disabled={isConnecting}
-            >
-              {isConnecting ? (
-                <>
-                  <RefreshCw size={18} className="spin" /> Connecting…
-                </>
-              ) : (
-                <>
-                  <Wallet size={18} /> Connect wallet
-                </>
-              )}
-            </button>
-
-            <p className="sky-micro">
-              <Check size={13} /> Testnet only · non-custodial
-            </p>
-          </div>
+        <main className="pass-main">
+          <h1 className="pass-title" aria-label="Send Bitcoin like a text.">
+            <span className="sky-line" aria-hidden="true"><span>Send Bitcoin</span></span>
+            <span className="sky-line" aria-hidden="true"><span>like a text.</span></span>
+          </h1>
+          <p className="pass-lede">
+            One tap connects your Stacks wallet to the testnet.
+          </p>
 
           <div
-            className="sky-stage"
+            className="pass-tilt"
+            ref={skyTiltRef}
             aria-hidden="true"
             onMouseMove={(e) => skyTilt(e.clientX, e.clientY)}
-            onMouseLeave={() => {
-              skyTiltReset();
-              setCapPaused(false);
-            }}
-            onMouseEnter={() => setCapPaused(true)}
+            onMouseLeave={skyTiltReset}
           >
-            <div className="sky-tilt" ref={skyTiltRef}>
-              <div className="sky-card">
-                <div className="sky-swap" key={cap.id}>
-                  <span className="sky-card-live"><i />Live preview</span>
-                  <span className="sky-card-eyebrow">{cap.eyebrow}</span>
-                  <div className="sky-card-fig">
-                    {cap.figure} <small>{cap.figunit}</small>
-                  </div>
-                  {cap.rows.map((r) => (
-                    <div className="sky-card-row" key={r.t}>
-                      <span className="sky-card-ico" style={{ background: `${r.bg}14`, color: r.bg }}>
-                        <r.icon size={15} />
-                      </span>
-                      <span>
-                        <strong>{r.t}</strong>
-                        <small>{r.s}</small>
-                      </span>
-                    </div>
-                  ))}
-                  <span className="sky-card-cta">{cap.cta}</span>
-                </div>
+            <div className="pass-card">
+              <div className="pass-row">
+                <span className="pass-micro">Testnet pass</span>
+                <span className="pass-status"><i />Not connected</span>
+              </div>
+              <div className="pass-chip" />
+              <div className="pass-row pass-bottom">
+                <span className="pass-holder">Guest</span>
+                <span className="pass-word">sato</span>
               </div>
             </div>
           </div>
+
+          <button
+            className="btn primary lg pass-connect"
+            onClick={connectWallet}
+            disabled={isConnecting}
+          >
+            {isConnecting ? (
+              <>
+                <RefreshCw size={18} className="spin" /> Connecting…
+              </>
+            ) : (
+              <>
+                <Wallet size={18} /> Connect wallet
+              </>
+            )}
+          </button>
+          <p className="pass-micro2">Testnet only · non-custodial</p>
         </main>
 
-        <footer className="sky-foot">© 2026 Sato · Testnet</footer>
-        <div className="sky-mist" aria-hidden="true" />
+        <footer className="pass-foot">© 2026 Sato</footer>
       </div>
     );
   }
@@ -3886,64 +3772,36 @@ const shellStyles = `
 .sato-shell *{box-sizing:border-box;}
 
 /* Auth (disconnected) — split sign-in */
-.sato-shell.auth-sky{display:block;min-height:100vh;position:relative;overflow:hidden;color:var(--ink);font-family:var(--sans);background:linear-gradient(180deg,#5d8fd6 0%,#7ba9e3 26%,#a9c9f0 50%,#d9e9fb 70%,#eef2f0 85%,var(--paper) 100%);}
+.sato-shell.auth-pass{display:block;min-height:100vh;min-height:100svh;background:var(--paper);color:var(--ink);font-family:var(--sans);}
 
-/* Sky-terminal sign-in — same sky language as the landing hero */
-.skyclouds{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
-.sc{position:absolute;background:#fff;border-radius:999px;filter:blur(2px);opacity:.9;}
-.sc.c1{width:340px;height:70px;top:12%;left:-60px;animation:sky-drift 26s ease-in-out infinite alternate;}
-.sc.c2{width:460px;height:84px;top:6%;right:-80px;animation:sky-drift 32s ease-in-out infinite alternate-reverse;}
-.sc.c3{width:260px;height:56px;top:38%;left:16%;opacity:.7;animation:sky-drift 22s ease-in-out infinite alternate;}
-.sc.c4{width:380px;height:66px;top:32%;right:12%;opacity:.65;animation:sky-drift 28s ease-in-out infinite alternate-reverse;}
-@keyframes sky-drift{from{translate:-24px 0;}to{translate:30px -8px;}}
-.sky-mist{position:absolute;left:0;right:0;bottom:0;height:200px;background:linear-gradient(180deg,transparent,rgba(245,244,239,.55) 55%,var(--paper));pointer-events:none;}
-.sky-nav{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;padding:22px clamp(20px,4vw,44px);}
-.sky-nav .auth-brand{display:flex;align-items:center;gap:9px;color:#fff;}
-.sky-nav .auth-brand .brand-name{color:#fff;font-size:18px;}
-.sky-back{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:#fff;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:10px 18px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .18s ease,transform .18s var(--ease);}
-.sky-back:hover{background:rgba(255,255,255,.32);transform:translateY(-1px);}
-.sky-main{position:relative;z-index:2;max-width:1200px;margin:0 auto;padding:20px clamp(20px,4vw,44px) 44px;display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(28px,5vw,72px);align-items:center;}
-.sky-copy>*{animation:fade-up .6s var(--ease) both;}
-.sky-copy>*:nth-child(2){animation-delay:.06s;}
-.sky-copy>*:nth-child(3){animation-delay:.12s;}
-.sky-copy>*:nth-child(4){animation-delay:.18s;}
-.sky-copy>*:nth-child(5){animation-delay:.24s;}
-.sky-copy>*:nth-child(6){animation-delay:.3s;}
-.sky-eyebrow{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;color:rgba(255,255,255,.94);}
-.sky-title{font-size:clamp(46px,6vw,84px);line-height:.96;letter-spacing:-.05em;font-weight:800;color:#fff;margin:18px 0;}
-.sky-title{text-shadow:0 2px 26px rgba(50,90,160,.3);}
+/* Testnet pass sign-in — one object, minimal copy */
+.pass-nav{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;padding:26px clamp(20px,4vw,44px);}
+.pass-back{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--text-muted);transition:color .15s ease,transform .18s var(--ease);}
+.pass-back:hover{color:var(--ink);transform:translateY(-1px);}
+.pass-main{max-width:640px;margin:0 auto;padding:5vh clamp(20px,4vw,44px) 40px;display:flex;flex-direction:column;align-items:center;text-align:center;}
+.pass-title{font-size:clamp(48px,9vw,96px);line-height:.96;letter-spacing:-.055em;font-weight:800;margin:0;}
+.pass-lede{color:var(--text-muted);font-size:15.5px;margin:20px 0 0;}
+.pass-tilt{margin-top:44px;width:min(100%,400px);transform:perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .18s ease-out;}
+.pass-card{position:relative;overflow:hidden;background:linear-gradient(150deg,#161d29 0%,#0d1117 60%,#1a1410 100%);border-radius:22px;padding:26px;text-align:left;color:#fff;box-shadow:0 30px 70px rgba(13,17,23,.28);animation:pass-float 7s ease-in-out infinite;}
+@keyframes pass-float{0%,100%{transform:translateY(0);}50%{transform:translateY(-8px);}}
+.pass-card::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(420px circle at var(--gx,70%) var(--gy,10%),rgba(255,255,255,.14),transparent 60%);pointer-events:none;}
+.pass-row{display:flex;align-items:center;justify-content:space-between;}
+.pass-micro{font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#8d9aaa;}
+.pass-status{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a8e7c4;}
+.pass-status i{width:7px;height:7px;border-radius:50%;background:#a8e7c4;animation:tx-pulse 1.6s ease-in-out infinite;}
+.pass-chip{width:52px;height:38px;border-radius:8px;background:linear-gradient(135deg,#f15a24,#ff8d66);margin:34px 0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);}
+.pass-bottom{margin-top:8px;}
+.pass-holder{font-size:13px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:#8d9aaa;}
+.pass-word{font-size:26px;font-weight:800;letter-spacing:-.05em;color:#fff;}
+.pass-connect{width:min(100%,400px);margin-top:34px;box-shadow:0 14px 30px rgba(13,17,23,.22);}
+.pass-micro2{font-size:12.5px;font-weight:600;color:var(--muted);margin:16px 0 0;}
+.pass-foot{text-align:center;font-size:11.5px;color:var(--muted);padding:0 20px calc(26px + env(safe-area-inset-bottom));}
 .sky-line{display:block;overflow:hidden;padding-bottom:.09em;margin-bottom:-.09em;}
 .sky-line>span{display:block;animation:sky-rise .9s var(--ease) both;}
 .sky-line:nth-child(2)>span{animation-delay:.1s;}
 @keyframes sky-rise{from{transform:translateY(112%);}}
-.sky-lede{color:rgba(255,255,255,.92);font-size:16px;line-height:1.65;max-width:460px;margin:0 0 24px;}
-.sky-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 26px;}
-.sky-chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--sans);font-size:13px;font-weight:700;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:10px 16px;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .18s ease,transform .18s var(--ease),border-color .18s ease;}
-.sky-chip svg{opacity:.85;}
-.sky-chip:hover{background:rgba(255,255,255,.3);transform:translateY(-1px);}
-.sky-chip.active{background:#0d1117;border-color:#0d1117;color:#fff;box-shadow:0 10px 24px rgba(13,17,23,.3);}
-.sky-connect{box-shadow:0 14px 30px rgba(13,17,23,.3);}
-.sky-micro{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:rgba(255,255,255,.85);margin:18px 0 0;}
-.sky-micro svg{color:#a8e7c4;flex-shrink:0;}
 
 /* Brand panel */
-.sky-stage{position:relative;display:flex;flex-direction:column;align-items:center;}
-.sky-tilt{transform:perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .18s ease-out;width:min(100%,360px);}
-.sky-card{background:rgba(255,255,255,.94);border:1px solid rgba(255,255,255,.9);border-radius:26px;padding:26px;box-shadow:0 40px 90px rgba(20,40,80,.4);animation:sky-float 7s ease-in-out infinite;}
-@keyframes sky-float{0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
-.sky-swap{animation:sky-in .4s var(--ease) both;}
-@keyframes sky-in{from{opacity:0;transform:translateY(12px);}}
-.sky-card-live{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.1em;color:#1d7a4c;background:#dcf3e5;padding:5px 10px;border-radius:999px;margin-bottom:14px;}
-.sky-card-live i{width:6px;height:6px;border-radius:50%;background:#1d7a4c;animation:tx-pulse 1.6s ease-in-out infinite;}
-.sky-card-eyebrow{display:block;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#8c98aa;margin-bottom:6px;}
-.sky-card-fig{font-size:38px;font-weight:800;letter-spacing:-.04em;margin-bottom:16px;font-variant-numeric:tabular-nums;}
-.sky-card-fig small{font-size:13px;color:#6b6b6b;font-weight:700;letter-spacing:0;}
-.sky-card-row{display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #ececea;border-radius:13px;padding:11px 13px;margin-bottom:9px;}
-.sky-card-ico{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:0 0 32px;}
-.sky-card-row strong{display:block;font-size:13px;}
-.sky-card-row small{display:block;font-size:11px;color:#6b6b6b;}
-.sky-card-cta{display:block;background:#0d1117;color:#fff;border-radius:13px;padding:14px;text-align:center;font-size:14px;font-weight:800;margin-top:6px;}
-.sky-foot{position:relative;z-index:2;text-align:center;font-size:11.5px;font-weight:600;color:#5e6875;padding:0 20px 26px;}
 
 /* Sidebar */
 .sidebar{border-right:1px solid var(--line);padding:24px 16px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;background:var(--paper);}
@@ -4358,9 +4216,12 @@ const shellStyles = `
 .tx-list .tx-row:nth-child(4){animation-delay:.15s;}
 .tx-list .tx-row:nth-child(n+5){animation-delay:.2s;}
 
-/* Sign-in entrance + floating preview card */
-.sky-copy>*{animation:fade-up .55s var(--ease) both;}
-.sky-stage{animation:fade-in .6s var(--ease) both;}
+/* Sign-in entrance */
+.pass-main>*{animation:fade-up .55s var(--ease) both;}
+.pass-main>*:nth-child(2){animation-delay:.06s;}
+.pass-main>*:nth-child(3){animation-delay:.12s;}
+.pass-main>*:nth-child(4){animation-delay:.18s;}
+.pass-main>*:nth-child(5){animation-delay:.24s;}
 
 /* Hover micro-interactions */
 .stat-tile:hover{transform:translateY(-2px);border-color:#cdd0ca;box-shadow:var(--elev-2);}
@@ -4390,12 +4251,10 @@ const shellStyles = `
 }
 @media(max-width:800px){
   .sato-shell{grid-template-columns:1fr;}
-  .sato-shell.auth-sky{min-height:100svh;}
-  .sky-main{grid-template-columns:1fr;gap:40px;padding-top:8px;}
-  .sky-title{font-size:clamp(40px,11vw,58px);}
-  .sky-card{padding:22px;}
-  .sky-card-fig{font-size:32px;}
-  .sky-foot{padding-bottom:calc(20px + env(safe-area-inset-bottom));}
+  .pass-main{gap:0;padding-top:4px;}
+  .pass-title{font-size:clamp(44px,13vw,64px);}
+  .pass-card{padding:22px;}
+  .pass-tilt{margin-top:36px;}
   .sidebar{display:none;}
   .main{padding:28px 20px 96px;max-width:100%;}
   .page-head{flex-wrap:wrap;}
@@ -4412,13 +4271,13 @@ const shellStyles = `
   .main{padding:22px 16px 94px;}
   .panel{padding:20px;border-radius:16px;}
   .page-head .btn{width:100%;}
-  .sky-nav{padding:16px 20px;}
+  .pass-nav{padding:16px 20px;}
   .balance-num{font-size:36px;}
   .stat-tile.big .stat-value{font-size:26px;}
   .bh-num{font-size:32px;}
 }
 @media(prefers-reduced-motion:reduce){
-  .view>*,.tx-list .tx-row,.sky-line>span,.sky-card,.sky-swap,.sky-copy>*,.sky-stage,.spin,.lock-progress i,.tx-detail,.tx-step.active i,.quote-skel i{animation:none !important;}
+  .view>*,.tx-list .tx-row,.sky-line>span,.pass-card,.pass-main>*,.spin,.lock-progress i,.tx-detail,.tx-step.active i,.quote-skel i{animation:none !important;}
   *{transition-duration:.01ms !important;}
 }
 `;
