@@ -42,6 +42,7 @@ import {
   Landmark,
   AlertTriangle,
   ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -859,49 +860,141 @@ function SatoApp() {
     <div className="sato-shell">
       <style>{shellStyles}</style>
 
-      {/* Slim icon rail — the whole app fits in captions, not panels */}
-      <aside className="rail" aria-label="Primary">
-        <span className="rail-mark" title="Sato · testnet">
+      {/* Sidebar: grouped nav, live recents, pool card, account */}
+      <aside className="sbar" aria-label="Primary">
+        <span className="sbar-mark" title="Sato · testnet">
           <img src="/assets/sato-logo.png" alt="" />
         </span>
-        <nav className="rail-nav">
-          {[...tabItems, { id: "activity", label: "Activity", icon: Receipt } as const].map(
-            ({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                title={label}
-                className={view === id ? "rail-btn active" : "rail-btn"}
-                onClick={() => setView(id)}
-              >
-                <Icon size={19} />
-                <span>{label}</span>
-              </button>
-            ),
-          )}
-        </nav>
-        <div className="rail-foot">
+        <div className="sbar-scroll">
+          {navGroups.map((group) => (
+            <div className="sbar-group" key={group.label}>
+              <span className="sbar-group-label">{group.label}</span>
+              <nav className="sbar-nav">
+                {group.items.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={view === id ? "sbar-btn active" : "sbar-btn"}
+                    onClick={() => setView(id)}
+                  >
+                    <Icon size={18} />
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          ))}
+
+          <div className="sbar-group">
+            <span className="sbar-group-label">Recents</span>
+            <div className="sbar-recents">
+              {txs.length === 0 ? (
+                <span className="sbar-recents-empty">
+                  {txLoading ? "Loading…" : "No activity yet"}
+                </span>
+              ) : (
+                txs.slice(0, 3).map((t) => (
+                  <button
+                    key={t.txId}
+                    type="button"
+                    className="sbar-recent"
+                    onClick={() => setView("activity")}
+                    title={`${t.label} — ${t.status}`}
+                  >
+                    <span className={`sbar-dot ${t.status}`} />
+                    <span className="sbar-recent-label">{t.label}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="sbar-pool"
+          onClick={() => setView("gas")}
+          title="Gas pool — top up"
+        >
+          <span className="sbar-pool-top">
+            <Fuel size={14} />
+            Gas pool
+          </span>
+          <strong>
+            {fmt(sponsor.poolBalance)} <small>sats</small>
+          </strong>
+          <span className="sbar-pool-sub">
+            {sponsor.poolBalance > 0n ? "Covering sponsored fees" : "Empty — top it up"}
+          </span>
+        </button>
+
+        <div className="sbar-account">
           <button
             type="button"
-            className="rail-avatar"
-            title={myName ? `@${myName} — activity` : "Activity"}
+            className={view === "activity" ? "sbar-user active" : "sbar-user"}
             onClick={() => setView("activity")}
+            title="View your activity"
           >
-            {initials}
+            <span className="sbar-avatar">{initials}</span>
+            <span className="sbar-meta">
+              <strong>{myName ? `@${myName}` : "Unnamed"}</strong>
+              <small>{short(address)}</small>
+            </span>
           </button>
-          <button
-            type="button"
-            className="icon-btn"
-            title="Disconnect"
-            onClick={disconnectWallet}
-          >
-            <LogOut size={13} />
-          </button>
+          <div className="sbar-tools">
+            <CopyButton value={address} />
+            <a
+              className="icon-btn"
+              href={explorerAddr(address)}
+              target="_blank"
+              rel="noreferrer"
+              title="View on explorer"
+            >
+              <ExternalLink size={13} />
+            </a>
+            <button
+              type="button"
+              className="icon-btn"
+              title="Disconnect"
+              onClick={disconnectWallet}
+            >
+              <LogOut size={13} />
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* Main column */}
       <main className="main">
+        <header className="topbar">
+          <nav className="crumbs" aria-label="Breadcrumb">
+            <span>Sato</span>
+            <ChevronRight size={13} />
+            <strong>
+              {([...tabItems, { id: "activity", label: "Activity" }] as const).find(
+                (t) => t.id === view,
+              )?.label ?? "Overview"}
+            </strong>
+          </nav>
+          <div className="topbar-right">
+            <span className="price-chip" title="Live BTC price">
+              ₿{" "}
+              {btcUsd != null
+                ? `$${btcUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                : "…"}
+            </span>
+            <button
+              type="button"
+              className="btn soft sm"
+              onClick={onFaucet}
+              disabled={busy === "faucet"}
+              title="Get test sBTC"
+            >
+              <Plus size={14} />
+              {busy === "faucet" ? "Funding…" : "Faucet"}
+            </button>
+          </div>
+        </header>
         <div className="view" key={view}>
         {view === "overview" && (
           <Overview
@@ -3853,6 +3946,10 @@ function ActivityView(props: {
             ))}
           </div>
         </div>
+        <div className="tx-head" aria-hidden="true">
+          <span>Transaction</span>
+          <span>Status · When</span>
+        </div>
         <TxTable
           txs={filtered}
           loading={loading}
@@ -3880,7 +3977,7 @@ function ActivityView(props: {
 
 // Scoped styles using Sato's palette (defined in index.css :root).
 const shellStyles = `
-.sato-shell{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--sans);display:grid;grid-template-columns:92px 1fr;}
+.sato-shell{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--sans);display:grid;grid-template-columns:248px 1fr;}
 .sato-shell *{box-sizing:border-box;}
 
 /* Auth (disconnected) — split sign-in */
@@ -3936,17 +4033,48 @@ const shellStyles = `
 /* Brand panel */
 
 /* Sidebar */
-.rail{border-right:1px solid var(--line);padding:18px 10px;display:flex;flex-direction:column;align-items:center;gap:8px;position:sticky;top:0;height:100vh;background:var(--paper);}
-.rail-mark{width:34px;height:34px;border-radius:10px;overflow:hidden;background:#000;display:grid;place-items:center;flex-shrink:0;margin-bottom:8px;}
-.rail-mark img{width:100%;height:100%;object-fit:cover;display:block;}
-.rail-nav{display:flex;flex-direction:column;gap:2px;width:100%;}
-.rail-btn{display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:9px 2px;border-radius:12px;font-size:9.5px;font-weight:700;letter-spacing:.02em;cursor:pointer;font-family:var(--sans);transition:background .14s,color .14s;}
-.rail-btn:hover{background:#ecebe5;color:var(--ink);}
-.rail-btn.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
-.rail-btn.active svg{color:var(--orange);}
-.rail-foot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:10px;}
-.rail-avatar{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#e9f0ff;color:#446aa8;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--sans);transition:transform .15s var(--ease),box-shadow .15s ease;}
-.rail-avatar:hover{transform:scale(1.06);box-shadow:var(--elev-1);}
+.sbar{border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh;background:var(--paper);width:248px;flex-shrink:0;}
+.sbar-mark{width:34px;height:34px;border-radius:10px;overflow:hidden;background:#000;display:grid;place-items:center;flex-shrink:0;margin:2px 0 16px 6px;}
+.sbar-mark img{width:100%;height:100%;object-fit:cover;display:block;}
+.sbar-scroll{flex:1;display:flex;flex-direction:column;gap:20px;min-height:0;overflow-y:auto;scrollbar-width:none;}
+.sbar-scroll::-webkit-scrollbar{display:none;}
+.sbar-group-label{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);padding:0 12px 8px;}
+.sbar-nav{display:flex;flex-direction:column;gap:2px;}
+.sbar-btn{display:flex;align-items:center;gap:11px;width:100%;border:0;background:transparent;color:var(--text-muted);padding:10px 12px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:background .14s,color .14s;text-align:left;}
+.sbar-btn:hover{background:#ecebe5;color:var(--ink);}
+.sbar-btn.active{background:var(--white);color:var(--ink);box-shadow:0 1px 2px #1620280f,0 0 0 1px var(--line);}
+.sbar-btn.active svg{color:var(--orange);}
+.sbar-recents{display:flex;flex-direction:column;gap:2px;}
+.sbar-recents-empty{font-size:12.5px;color:var(--muted);padding:6px 12px;}
+.sbar-recent{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:8px 12px;border-radius:10px;cursor:pointer;font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--text-muted);transition:background .14s,color .14s;text-align:left;}
+.sbar-recent:hover{background:#ecebe5;color:var(--ink);}
+.sbar-recent-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sbar-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#c9c5bb;}
+.sbar-dot.success{background:#1d7a4c;}
+.sbar-dot.pending{background:var(--orange);animation:tx-pulse 1.6s ease-in-out infinite;}
+.sbar-dot.failed,.sbar-dot.abort{background:#b3261e;}
+.sbar-pool{display:flex;flex-direction:column;align-items:flex-start;gap:5px;width:100%;text-align:left;border:1px solid var(--line);background:linear-gradient(135deg,#fbeedf 0%,#f6f5f0 70%);border-radius:14px;padding:14px;cursor:pointer;font-family:var(--sans);color:var(--ink);transition:transform .18s var(--ease),box-shadow .18s ease;}
+.sbar-pool:hover{transform:translateY(-2px);box-shadow:var(--elev-2);}
+.sbar-pool-top{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a6d3b;}
+.sbar-pool strong{font-size:19px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+.sbar-pool strong small{font-size:11.5px;color:var(--text-muted);font-weight:700;}
+.sbar-pool-sub{font-size:11.5px;font-weight:600;color:var(--text-muted);}
+.sbar-account{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px;}
+.sbar-user{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;padding:6px;border-radius:11px;cursor:pointer;font-family:var(--sans);text-align:left;transition:background .14s;}
+.sbar-user:hover{background:#ecebe5;}
+.sbar-avatar{width:34px;height:34px;border-radius:50%;background:#e9f0ff;color:#446aa8;display:grid;place-items:center;font-size:12px;font-weight:800;flex-shrink:0;}
+.sbar-meta{display:flex;flex-direction:column;min-width:0;flex:1;}
+.sbar-meta strong{font-size:13.5px;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sbar-meta small{font-size:11px;color:var(--muted);font-family:var(--mono);}
+.sbar-tools{display:flex;align-items:center;gap:6px;padding:0 4px;}
+.topbar{position:sticky;top:0;z-index:15;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 4px;margin-bottom:14px;background:rgba(245,244,239,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);}
+.crumbs{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600;}
+.crumbs svg{color:#b9b4a8;}
+.crumbs strong{color:var(--ink);font-size:14px;letter-spacing:-.01em;}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.price-chip{font-size:12.5px;font-weight:800;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.tx-head{display:grid;grid-template-columns:1fr auto;gap:12px;padding:4px 8px 10px;font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);}
+.tx-head span:last-child{text-align:right;}
 .brand-mark{width:30px;height:30px;border-radius:9px;overflow:hidden;background:#000;display:grid;place-items:center;flex-shrink:0;}
 .brand-mark img{width:100%;height:100%;object-fit:cover;display:block;}
 .brand-name{font-weight:700;font-size:17px;letter-spacing:-.02em;}
@@ -4387,7 +4515,8 @@ const shellStyles = `
   .pass-face{padding:22px;}
   .pass-tilt{margin-top:24px;}
   .pass-connect{margin-top:22px;}
-  .rail{display:none;}
+  .sbar{display:none;}
+  .topbar{top:0;padding:10px 0;}
   .main{padding:28px 20px 96px;max-width:100%;}
   .receive-hero{grid-template-columns:1fr;justify-items:center;}
   .receive-info{align-items:center;text-align:center;}
