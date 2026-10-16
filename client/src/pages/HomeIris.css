@@ -56,9 +56,9 @@
 .iris-btn:active { transform: scale(.97); }
 
 /* ---- floating nav ---- */
-.iris-navwrap { position: fixed; top: 14px; left: 0; right: 0; z-index: 50; display: flex; justify-content: center; padding: 0 16px; pointer-events: none; }
+.iris-navwrap { position: fixed; top: max(14px, env(safe-area-inset-top)); left: 0; right: 0; z-index: 50; display: flex; justify-content: center; padding: 0 16px; pointer-events: none; }
 .iris-nav {
-  pointer-events: auto; display: flex; align-items: center; gap: 6px;
+  position: relative; pointer-events: auto; display: flex; align-items: center; gap: 6px;
   width: min(760px, 100%); height: 60px; padding: 6px 7px 6px 9px;
   border-radius: 999px; border: 1px solid rgba(255,255,255,.55);
   background: rgba(255,255,255,.55); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
@@ -311,7 +311,16 @@
 @media (max-width: 760px) {
   .iris-nav { height: 56px; }
   .iris-nav-brand { font-size: .95rem; padding-right: 10px; }
-  .iris-nav-cta { font-size: 12.5px; padding: 11px 16px; }
+  .iris-nav-cta { font-size: 12.5px; padding: 11px 16px; flex: 0 0 auto; }
+  /* mobile menu: links collapse into a panel anchored under the pill */
+  .iris-nav-links { display: none; }
+  .iris-nav-links.mobile-open { display: flex; position: absolute; top: calc(100% + 10px); left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 2px; background: rgba(255,255,255,.97); border: 1px solid #e3e6e8; border-radius: 20px; padding: 10px; box-shadow: 0 24px 60px rgba(21,34,53,.22); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+  .iris-nav-links.mobile-open .iris-nav-link { justify-content: flex-start; width: 100%; text-align: left; }
+  .iris-nav-links.mobile-open .iris-has-drop { width: 100%; }
+  .iris-dropdown { position: static; transform: none; opacity: 1; pointer-events: auto; box-shadow: none; border: 0; border-top: 1px solid var(--iris-line); border-radius: 0; margin-top: 4px; padding: 4px 0 0; display: none; min-width: 0; }
+  .iris-has-drop.open .iris-dropdown { display: block; }
+  .iris-burger { display: block; margin-left: auto; padding: 10px; min-width: 42px; min-height: 42px; }
+  .iris-waitrow { flex-wrap: wrap; row-gap: 8px; }
   .iris-hero { padding-top: 108px; }
   .iris-hero h1 { font-size: clamp(42px, 12vw, 64px); }
   .iris-hero-ctas { flex-direction: column; align-items: stretch; max-width: 380px; margin-inline: auto; }
@@ -337,10 +346,11 @@
 }
 @media (max-width: 430px) {
   .iris-navwrap { padding: 0 10px; }
-  .iris-nav { gap: 4px; }
+  .iris-nav { gap: 4px; height: 54px; padding-left: 7px; }
   .iris-nav .iris-nav-word { display: none; } /* mark only, saves ~50px */
   .iris-nav-brand { border-right: 0; padding-right: 2px; }
   .iris-nav-cta { font-size: 12px; padding: 10px 14px; }
+  .iris-hero h1 { font-size: clamp(38px, 12vw, 64px); }
   .iris-hero { padding-inline: 18px; }
   .iris-section { padding-inline: 18px; }
   .iris-cta-form { flex-direction: column; border-radius: 24px; padding: 10px; gap: 10px; align-items: stretch; }
