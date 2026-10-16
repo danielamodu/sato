@@ -684,7 +684,6 @@ function SatoApp() {
               <img src="/assets/sato-logo.png" alt="Sato" />
             </span>
             <span className="brand-name">sato</span>
-            <span className="brand-badge">testnet</span>
           </span>
           <a className="pass-back" href="https://satoxbt.com">
             Back to site <ArrowUpRight size={14} />
@@ -781,7 +780,6 @@ function SatoApp() {
               <img src="/assets/sato-logo.png" alt="Sato" />
             </span>
           <span className="brand-name">Sato</span>
-          <span className="brand-badge">testnet</span>
         </div>
 
         <div className="sidebar-scroll">
@@ -3772,16 +3770,18 @@ const shellStyles = `
 .sato-shell *{box-sizing:border-box;}
 
 /* Auth (disconnected) — split sign-in */
-.sato-shell.auth-pass{display:block;min-height:100vh;min-height:100svh;background:var(--paper);color:var(--ink);font-family:var(--sans);}
+.sato-shell.auth-pass{display:flex;flex-direction:column;height:100vh;height:100svh;overflow:hidden;background:var(--paper);color:var(--ink);font-family:var(--sans);}
 
 /* Testnet pass sign-in — one object, minimal copy */
-.pass-nav{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;padding:26px clamp(20px,4vw,44px);}
+.pass-nav{display:flex;align-items:center;justify-content:space-between;max-width:1200px;width:100%;margin:0 auto;padding:22px clamp(20px,4vw,44px);flex:0 0 auto;}
+.pass-nav .auth-brand{display:flex;align-items:center;gap:9px;}
+.pass-nav .auth-brand .brand-name{font-size:18px;}
 .pass-back{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--text-muted);transition:color .15s ease,transform .18s var(--ease);}
 .pass-back:hover{color:var(--ink);transform:translateY(-1px);}
-.pass-main{max-width:640px;margin:0 auto;padding:5vh clamp(20px,4vw,44px) 40px;display:flex;flex-direction:column;align-items:center;text-align:center;}
-.pass-title{font-size:clamp(48px,9vw,96px);line-height:.96;letter-spacing:-.055em;font-weight:800;margin:0;}
-.pass-lede{color:var(--text-muted);font-size:15.5px;margin:20px 0 0;}
-.pass-tilt{margin-top:44px;width:min(100%,400px);transform:perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .18s ease-out;}
+.pass-main{width:100%;max-width:640px;margin:0 auto;padding:0 clamp(20px,4vw,44px);display:flex;flex:1 1 auto;min-height:0;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.pass-title{font-size:clamp(44px,min(11vw,9svh),88px);line-height:.96;letter-spacing:-.055em;font-weight:800;margin:0;}
+.pass-lede{color:var(--text-muted);font-size:15px;margin:14px 0 0;}
+.pass-tilt{margin-top:30px;width:min(100%,380px);transform:perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .18s ease-out;}
 .pass-card{position:relative;overflow:hidden;background:linear-gradient(150deg,#161d29 0%,#0d1117 60%,#1a1410 100%);border-radius:22px;padding:26px;text-align:left;color:#fff;box-shadow:0 30px 70px rgba(13,17,23,.28);animation:pass-float 7s ease-in-out infinite;}
 @keyframes pass-float{0%,100%{transform:translateY(0);}50%{transform:translateY(-8px);}}
 .pass-card::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(420px circle at var(--gx,70%) var(--gy,10%),rgba(255,255,255,.14),transparent 60%);pointer-events:none;}
@@ -3793,9 +3793,9 @@ const shellStyles = `
 .pass-bottom{margin-top:8px;}
 .pass-holder{font-size:13px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:#8d9aaa;}
 .pass-word{font-size:26px;font-weight:800;letter-spacing:-.05em;color:#fff;}
-.pass-connect{width:min(100%,400px);margin-top:34px;box-shadow:0 14px 30px rgba(13,17,23,.22);}
-.pass-micro2{font-size:12.5px;font-weight:600;color:var(--muted);margin:16px 0 0;}
-.pass-foot{text-align:center;font-size:11.5px;color:var(--muted);padding:0 20px calc(26px + env(safe-area-inset-bottom));}
+.pass-connect{width:min(100%,380px);margin-top:26px;box-shadow:0 14px 30px rgba(13,17,23,.22);}
+.pass-micro2{font-size:12.5px;font-weight:600;color:var(--muted);margin:14px 0 0;}
+.pass-foot{flex:0 0 auto;text-align:center;font-size:11.5px;color:var(--muted);padding:0 20px 20px;}
 .sky-line{display:block;overflow:hidden;padding-bottom:.09em;margin-bottom:-.09em;}
 .sky-line>span{display:block;animation:sky-rise .9s var(--ease) both;}
 .sky-line:nth-child(2)>span{animation-delay:.1s;}
@@ -3809,7 +3809,6 @@ const shellStyles = `
 .brand-mark{width:30px;height:30px;border-radius:9px;overflow:hidden;background:#000;display:grid;place-items:center;flex-shrink:0;}
 .brand-mark img{width:100%;height:100%;object-fit:cover;display:block;}
 .brand-name{font-weight:700;font-size:17px;letter-spacing:-.02em;}
-.brand-badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:var(--mint);color:var(--navy);padding:2px 7px;border-radius:999px;font-weight:700;}
 .sidebar-scroll{flex:1;display:flex;flex-direction:column;gap:16px;min-height:0;overflow-y:auto;overflow-x:hidden;margin:0 -4px;padding:0 4px;scrollbar-width:none;-ms-overflow-style:none;}
 .sidebar-scroll::-webkit-scrollbar{width:0;height:0;display:none;}
 .nav-group-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:0 12px 8px;}
@@ -4251,10 +4250,11 @@ const shellStyles = `
 }
 @media(max-width:800px){
   .sato-shell{grid-template-columns:1fr;}
-  .pass-main{gap:0;padding-top:4px;}
-  .pass-title{font-size:clamp(44px,13vw,64px);}
+  .pass-main{padding-top:0;}
+  .pass-title{font-size:clamp(40px,min(13vw,10svh),64px);}
   .pass-card{padding:22px;}
-  .pass-tilt{margin-top:36px;}
+  .pass-tilt{margin-top:24px;}
+  .pass-connect{margin-top:22px;}
   .sidebar{display:none;}
   .main{padding:28px 20px 96px;max-width:100%;}
   .page-head{flex-wrap:wrap;}
