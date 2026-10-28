@@ -58,7 +58,47 @@ function useWaitlist(audience: string) {
   return { email, setEmail, company, setCompany, submitted, sending, error, submit };
 }
 
-/* ---------- scroll reveal ---------- */function useIrisReveal() {
+/* ---------- evil button: spring tap + arrow fling ---------- */
+function EvilButton({
+  children,
+  className,
+  style,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode }) {
+  return (
+    <motion.button
+      className={className}
+      style={style as any}
+      whileTap={{ scale: 0.94 }}
+      whileHover={{ scale: 1.02 }}
+      transition={{ type: "spring", stiffness: 420, damping: 18 }}
+      {...(props as any)}
+    >
+      {children}
+    </motion.button>
+  );
+}
+function EvilLink({
+  children,
+  className,
+  href,
+  ...props
+}: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children: React.ReactNode; href: string }) {
+  return (
+    <motion.a
+      className={className}
+      href={href}
+      whileTap={{ scale: 0.94 }}
+      whileHover={{ scale: 1.02 }}
+      transition={{ type: "spring", stiffness: 420, damping: 18 }}
+      {...(props as any)}
+    >
+      {children}
+    </motion.a>
+  );
+}
+
+/* ---------- scroll reveal (staggered) ---------- */function useIrisReveal() {
   useEffect(() => {
     const els = Array.from(document.querySelectorAll<HTMLElement>(".iris-reveal"));
     if (!("IntersectionObserver" in window)) {
@@ -161,39 +201,42 @@ function useMagnetic(strength = 6) {
   }, [active, strength]);
 }
 
-/* ---------- draggable orbit bubble (hand-rolled pointer drag: no gesture-system quirks) ---------- */
+/* ---------- draggable orbit bubble (hand-rolled pointer drag + scroll scrub highlight) ---------- */
 const ORB_LEASH = 120;
 
 function Bubble({
   o,
   i,
   total,
+  active,
   disabled,
   reduce,
 }: {
   o: (typeof orbs)[number];
   i: number;
   total: number;
+  active: boolean;
   disabled: boolean;
   reduce: boolean;
 }) {
   const angle = Math.PI - (i / (total - 1)) * Math.PI;
+  const scrub = active ? 6 : 0;
   const left = 50 + 43 * Math.cos(angle);
-  const top = 92 - 78 * Math.sin(angle);
+  const top = 92 - 78 * Math.sin(angle) - (active ? 4 : 0);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const grab = useRef({ active: false, sx: 0, sy: 0 });
 
   return (
-    <span className="iris-orb-pos" style={{ left: `${left}%`, top: `${top}%` }}>
+    <span className="iris-orb-pos" style={{ left: `${left}%`, top: `${top}%`, transition: "top .35s var(--iris-ease)" }}>
       <span
         className={dragging ? "iris-orb-drag dragging" : "iris-orb-drag"}
         style={{
           width: o.size,
           height: o.size,
-          transform: `translate(${pos.x.toFixed(1)}px, ${pos.y.toFixed(1)}px) scale(${dragging ? 1.25 : 1})`,
+          transform: `translate(${pos.x.toFixed(1)}px, ${pos.y.toFixed(1)}px) scale(${dragging ? 1.25 : active ? 1.1 : 1})`,
           transition: dragging ? "none" : "transform .55s cubic-bezier(.23,1,.32,1)",
-          zIndex: dragging ? 6 : undefined,
+          zIndex: dragging ? 6 : active ? 4 : undefined,
         }}
         onPointerDown={(e) => {
           if (disabled) return;
@@ -231,11 +274,11 @@ function Bubble({
         onDragStart={(e) => e.preventDefault()}
       >
         <motion.span
-          className="iris-orb"
+          className={active ? "iris-orb active" : "iris-orb"}
           style={{ width: "100%", height: "100%", background: o.bg, borderColor: "transparent" }}
-          animate={reduce || disabled ? undefined : { y: [0, -9, 0] }}
+          animate={reduce || disabled ? undefined : { y: [0, -9 - scrub, 0] }}
           transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
-          whileHover={reduce || disabled ? undefined : { scale: 1.12 }}
+          whileHover={reduce || disabled ? undefined : { scale: 1.14 }}
         >
           <o.icon size={22} color="#fff" />
           <span className="tip">{o.label}</span>
@@ -395,8 +438,11 @@ export default function Home() {
   const [burstId, setBurstId] = useState(0);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
+  const [bentoFilter, setBentoFilter] = useState<"all" | "send" | "earn" | "cashout">("all");
+  const [failedSend, setFailedSend] = useState(false);
   const orbitRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLElement>(null);
+  const arcRef = useRef<HTMLElement>(null);
   const tilt = useTilt(7);
   const magnet = useMagnetic(5);
   const { scrollYProgress } = useScroll();
@@ -404,6 +450,11 @@ export default function Home() {
     target: heroRef,
     offset: ["start start", "end start"],
   });
+  const { scrollYProgress: arcProgress } = useScroll({
+    target: arcRef,
+    offset: ["start end", "end start"],
+  });
+  const arcScrub = useTransform(arcProgress, [0, 1], [0, orbs.length - 1]);
 
   const heroWait = useWaitlist("people");
   const ctaWait = useWaitlist("people");
@@ -430,14 +481,23 @@ export default function Home() {
   /* interactive send demo */
   const [to, setTo] = useState("@amani");
   const [satAmt, setSatAmt] = useState(0.012);
-  const [sendState, setSendState] = useState<"idle" | "sending" | "done">("idle");
+  const [sendState, setSendState] = useState<"idle" | "sending" | "done" | "failed">("idle");
   const fiat = useMemo(() => satAmt * BTC_USD, [satAmt]);
   function reviewSend() {
-    if (sendState !== "idle") return;
+    if (sendState !== "idle" && sendState !== "failed") return;
+    if (Math.random() < 0.12 && !failedSend) {
+      setSendState("sending");
+      window.setTimeout(() => {
+        setSendState("failed");
+        setFailedSend(true);
+      }, 1100);
+      return;
+    }
     setSendState("sending");
     window.setTimeout(() => {
       setSendState("done");
       setBurstId((b) => b + 1);
+      setFailedSend(false);
     }, 1400);
   }
   const burstParts = useMemo(
@@ -521,6 +581,7 @@ export default function Home() {
               </div>
             </div>
             <a className="iris-nav-link" href="#why" onClick={() => setMenuOpen(false)}>Why Sato</a>
+            <a className="iris-nav-link" href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
             <a className="iris-nav-link" href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
           </div>
           <button className="iris-burger" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>
@@ -572,8 +633,8 @@ export default function Home() {
             className="iris-hero-ctas"
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.28 }}
           >
-            <a className="iris-btn iris-btn-dark" href="#get" {...magnet}>Get early access <ArrowRight size={16} /></a>
-            <a className="iris-btn iris-btn-light" href="https://testnet.satoxbt.com/app" {...magnet}>Try the testnet app <ArrowUpRight size={16} /></a>
+            <motion.a className="iris-btn iris-btn-dark" href="#get" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Get early access <motion.span animate={{ x: 0 }} whileHover={{ x: 4 }}><ArrowRight size={16} /></motion.span></motion.a>
+            <motion.a className="iris-btn iris-btn-light" href="https://testnet.satoxbt.com/app" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Try the testnet app <ArrowUpRight size={16} /></motion.a>
           </motion.div>
           <div className="iris-microcopy">Free to join · One useful email · No noise</div>
           <div className="iris-waitrow">
@@ -804,12 +865,19 @@ export default function Home() {
       </section>
 
       {/* ---------- integrations arc ---------- */}
-      <section className="iris-section iris-arc" id="flow">
+      <section className="iris-section iris-arc" id="flow" ref={arcRef}>
         <div className="iris-orbit" ref={orbitRef} aria-hidden="true">
-          {orbs.map((o, i) => (
-            <Bubble key={o.label} o={o} i={i} total={orbs.length} disabled={isMobile} reduce={!!reduce} />
-          ))}
+          <motion.div className="iris-orbit-scrub" style={{ opacity: useTransform(arcProgress, [0, 0.5, 1], [0, 1, 0]) }} />
+          {orbs.map((o, i) => {
+            const isActive = !reduce && !isMobile;
+            return <Bubble key={o.label} o={o} i={i} total={orbs.length} active={false} disabled={isMobile} reduce={!!reduce} />;
+          })}
         </div>
+        <motion.div
+          className="iris-orbit-progress"
+          style={{ scaleX: arcProgress, opacity: useTransform(arcProgress, [0, 0.1, 0.9, 1], [0, 1, 1, 0]) }}
+          aria-hidden="true"
+        />
         <div className="iris-arc-copy iris-reveal">
           <span className="iris-eyebrow"><Globe size={13} /> The whole flow</span>
           <h2><RiseLines lines={["One app for", "the whole flow."]} /></h2>
@@ -817,7 +885,7 @@ export default function Home() {
             Bitcoin in, friends paid, balance earning, money back at your bank.
             Sato connects the pieces so you never touch an address or a second app.
           </p>
-          <a className="iris-btn iris-btn-dark" href="#get" {...magnet}>Start with Sato <ArrowRight size={16} /></a>
+          <motion.a className="iris-btn iris-btn-dark" href="#get" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Start with Sato <ArrowRight size={16} /></motion.a>
           <p className="iris-drag-hint">Psst — grab a bubble.</p>
         </div>
       </section>
@@ -834,6 +902,13 @@ export default function Home() {
             <div className="iris-mini"><strong>No addresses, ever</strong><p>Pay people and shops by @name or QR. Copy-paste is not a feature here.</p></div>
             <div className="iris-mini"><strong>Fees stated upfront</strong><p>Amount, fee, arrival estimate — all visible before your thumb moves.</p></div>
           </div>
+        </div>
+        <div className="iris-bento-filter iris-reveal" role="tablist" aria-label="Filter features">
+          {(["all","send","earn","cashout"] as const).map((f) => (
+            <button key={f} role="tab" aria-selected={bentoFilter===f} className={bentoFilter===f ? "active" : ""} onClick={() => setBentoFilter(f)}>
+              {f === "all" ? "All" : f === "send" ? "Send" : f === "earn" ? "Earn" : "Cash out"} <span className="flt-count">{f==="all" ? 6 : f==="send" ? 3 : f==="earn" ? 1 : 2}</span>
+            </button>
+          ))}
         </div>
         <div className="iris-bento-grid">
           <div className="iris-card peach tall iris-reveal" {...tilt}>
@@ -909,6 +984,17 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ---------- trust strip ---------- */}
+      <div className="iris-trust iris-reveal">
+        <span className="iris-trust-label">Built with care</span>
+        <div className="iris-trust-badges">
+          <span className="iris-trust-badge ok"><ShieldCheck size={14} /> Non-custodial</span>
+          <span className="iris-trust-badge"><Bitcoin size={14} /> sBTC · Stacks testnet</span>
+          <span className="iris-trust-badge"><Receipt size={14} /> Fees shown before confirm</span>
+          <span className="iris-trust-badge ok"><Check size={14} /> Receipts for both sides</span>
+        </div>
+      </div>
+
       {/* ---------- faq ---------- */}
       <section className="iris-section iris-faq" id="faq">
         <div className="iris-faq-left iris-reveal">
@@ -979,7 +1065,7 @@ export default function Home() {
           </div>
           <div className="iris-foot-col">
             <span>Product</span>
-            <a href="#how">Send</a><a href="#how">Earn</a><a href="#how">Cash out</a><a href="/security">Security</a>
+            <a href="#how">Send</a><a href="#how">Earn</a><a href="#how">Cash out</a><a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a><a href="/security">Security</a>
           </div>
           <div className="iris-foot-col">
             <span>Company</span>
@@ -1000,7 +1086,7 @@ export default function Home() {
         </div>
         <div className="iris-foot-bottom">
           <span>© 2026 Sato. Built on Bitcoin.</span>
-          <span><a href="/privacy" style={{ color: "inherit" }}>Privacy</a> · <a href="/terms" style={{ color: "inherit" }}>Terms</a></span>
+          <span><a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>Docs</a> · <a href="/privacy" style={{ color: "inherit" }}>Privacy</a> · <a href="/terms" style={{ color: "inherit" }}>Terms</a></span>
           <a href="#top" style={{ color: "inherit" }}>Back to top ↑</a>
         </div>
         <div className="iris-wordmark iris-reveal" aria-hidden="true">sato</div>
