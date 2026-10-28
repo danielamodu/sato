@@ -1,4 +1,4 @@
-import { Search, Sun, Moon, Menu, ExternalLink, ArrowUpRight } from "lucide-react";
+import { Search, Sun, Moon, Menu, ArrowUpRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 export function Header({
@@ -36,7 +36,7 @@ export function Header({
         {/* Command palette search trigger */}
         <button
           onClick={onOpenSearch}
-          className="flex h-9 w-44 sm:w-64 items-center justify-between rounded-lg border border-border bg-muted/40 px-3 text-xs text-muted-foreground transition-all hover:border-border/80 hover:bg-muted"
+          className="flex h-9 w-36 sm:w-64 items-center justify-between rounded-lg border border-border bg-muted/40 px-3 text-xs text-muted-foreground transition-all hover:border-border/80 hover:bg-muted"
         >
           <div className="flex items-center gap-2">
             <Search className="size-3.5" />
@@ -57,15 +57,15 @@ export function Header({
           {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </motion.button>
 
-        {/* Main Dapp Link */}
+        {/* Back to main Sato Dapp */}
         <a
           href="https://satoxbt.com"
-          target="_blank"
-          rel="noreferrer"
-          className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-1.5 text-xs font-semibold text-background transition-all hover:bg-foreground/90"
+          className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground transition-all hover:border-[#f15a24]/50 hover:bg-muted shadow-xs group"
+          title="Return to satoxbt.com"
         >
-          <span>satoxbt.com</span>
-          <ArrowUpRight className="size-3.5" />
+          <img src="/assets/sato-logo.png" alt="Sato" className="size-4 object-contain" />
+          <span>sato</span>
+          <ArrowUpRight className="size-3.5 text-muted-foreground group-hover:text-[#f15a24] transition-colors" />
         </a>
       </div>
     </header>
