@@ -5,6 +5,9 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite --host",
+    "docs:dev": "vite --config docs/vite.config.ts --host",
+    "docs:build": "vite build --config docs/vite.config.ts",
+    "docs:preview": "vite preview --config docs/vite.config.ts --host",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
