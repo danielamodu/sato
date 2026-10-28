@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { DocContent } from "./components/DocContent";
@@ -9,6 +9,7 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<string>("overview");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
 
   // Sync theme with document element
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function App() {
   const handleSelectSection = (id: string) => {
     setActiveSection(id);
     window.location.hash = id;
+    mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -56,8 +58,8 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
         />
 
-        <main className="flex-1 overflow-y-auto">
-          <DocContent activeSection={activeSection} />
+        <main ref={mainRef} className="flex-1 overflow-y-auto">
+          <DocContent activeSection={activeSection} onNavigate={handleSelectSection} />
         </main>
       </div>
 

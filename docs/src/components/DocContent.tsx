@@ -10,13 +10,31 @@ import {
   Layers,
   ArrowRight,
   Sparkles,
+  MousePointerClick,
+  Sliders,
+  ToggleLeft,
+  LayoutTemplate,
 } from "lucide-react";
 import { CONTRACTS, DEPLOYER_ADDRESS } from "../data/contracts";
 import { ContractCard } from "./ContractCard";
 import { CodeBlock } from "./CodeBlock";
 import { SponsorDiagram } from "./SponsorDiagram";
 
-export function DocContent({ activeSection }: { activeSection: string }) {
+// Interactive Playgrounds
+import { ComponentPreview } from "./playground/ComponentPreview";
+import { InteractiveButtons, BUTTONS_CODE } from "./playground/InteractiveButtons";
+import { InteractiveToggles, TOGGLE_CODE } from "./playground/InteractiveToggles";
+import { InteractivePaymentCard, PAYMENT_CODE } from "./playground/InteractivePaymentCard";
+import { InteractiveMorphTabs, TABS_CODE } from "./playground/InteractiveMorphTabs";
+import { InteractiveDialogShowcase, DIALOG_CODE } from "./playground/InteractiveDialogShowcase";
+
+export function DocContent({
+  activeSection,
+  onNavigate,
+}: {
+  activeSection: string;
+  onNavigate?: (id: string) => void;
+}) {
   const yieldContract = CONTRACTS.find((c) => c.id === "sato-yield-v3")!;
   const namesContract = CONTRACTS.find((c) => c.id === "sato-names")!;
   const sponsorContract = CONTRACTS.find((c) => c.id === "sato-sponsor")!;
@@ -24,64 +42,151 @@ export function DocContent({ activeSection }: { activeSection: string }) {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 md:px-8 md:py-12">
-      {/* 1. OVERVIEW */}
+      {/* 1. OVERVIEW & LIVING PLAYGROUND */}
       {activeSection === "overview" && (
-        <section id="overview" className="space-y-8 animate-in fade-in duration-300">
+        <section id="overview" className="space-y-10 animate-in fade-in duration-300">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary">
               <Sparkles className="size-3.5" />
-              <span>Getting Started</span>
+              <span>Interactive Component Lab & Documentation</span>
             </div>
             <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-              Overview & Vision
+              Sato Interactive Design System & Architecture
             </h1>
             <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-              Sato is a Bitcoin-native mobile payment application built on Stacks. It lets people send sBTC to
-              anyone by <strong>@username</strong>, earn yield automatically on idle balances, and cash out to local
-              currency (Naira) — with zero gas complexity and no wallet address friction.
+              Every component on this page is a <strong>living, interactive primitive</strong> built with tactile spring physics,
+              shadcn design tokens, and real Stacks blockchain logic. Click, toggle, and test them live.
             </p>
           </div>
 
-          {/* Value Props Grid */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Zap className="size-4" />
-              </div>
-              <h3 className="mt-3 text-sm font-bold text-foreground">Zero Gas Friction</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                All transactions are co-signed via Sato's sponsored gas pool. Users never touch or hold STX.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
-                <Coins className="size-4" />
-              </div>
-              <h3 className="mt-3 text-sm font-bold text-foreground">Continuous Yield</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                Holding sBTC in Sato automatically earns yield calculated on every Stacks block without deposit locks.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-                <CreditCard className="size-4" />
-              </div>
-              <h3 className="mt-3 text-sm font-bold text-foreground">Real-World Utility</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                Integrated with VTPass to pay Nigerian utility bills, buy airtime, and withdraw directly to bank rails.
-              </p>
-            </div>
+          {/* Quick jump pills */}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+            <span className="text-muted-foreground mr-1">Jump to:</span>
+            {[
+              { id: "contracts-yield-v3", label: "Smart Contracts" },
+              { id: "gasless", label: "Gasless Protocol" },
+              { id: "wallet", label: "Mobile Wallet" },
+              { id: "bills", label: "Bill Rails" },
+            ].map((pill) => (
+              <button
+                key={pill.id}
+                onClick={() => onNavigate?.(pill.id)}
+                className="rounded-lg border border-border bg-card px-2.5 py-1 text-foreground hover:border-primary/50 hover:bg-muted transition-all"
+              >
+                {pill.label} →
+              </button>
+            ))}
           </div>
 
-          <div className="rounded-2xl border border-border bg-muted/30 p-6">
-            <h3 className="text-sm font-bold text-foreground">Why Stacks & sBTC?</h3>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              With the Nakamoto upgrade reducing block times from 10 minutes to seconds and sBTC providing a 1:1
-              trust-minimized Bitcoin peg, Stacks has built the fast settlement rails required for everyday consumer payments.
-              Sato bridges the UX gap by removing hex keys, seed phrases, and gas tokens from the end user.
-            </p>
+          {/* PLAYGROUND 1: Interactive Payment Simulator */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <MousePointerClick className="size-4 text-primary" />
+              <h2 className="text-lg font-bold text-foreground">Interactive Payment Terminal</h2>
+            </div>
+            <ComponentPreview
+              title="Gasless Send Terminal"
+              description="Type an @username, slide the sBTC amount, and test the 2-phase co-signing flow live."
+              code={PAYMENT_CODE}
+            >
+              <InteractivePaymentCard />
+            </ComponentPreview>
+          </div>
+
+          {/* PLAYGROUND 2: Tactile Evil Buttons */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="size-4 text-primary" />
+              <h2 className="text-lg font-bold text-foreground">Tactile Spring Buttons (EvilButtons style)</h2>
+            </div>
+            <ComponentPreview
+              title="Spring Resistance & Async State Buttons"
+              description="Buttons with physical spring stiffness (450), particle burst haptics, and async loading states."
+              code={BUTTONS_CODE}
+            >
+              <InteractiveButtons />
+            </ComponentPreview>
+          </div>
+
+          {/* PLAYGROUND 3: Tactile Toggles */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <ToggleLeft className="size-4 text-primary" />
+              <h2 className="text-lg font-bold text-foreground">Physical Switches (Toggle.supply style)</h2>
+            </div>
+            <ComponentPreview
+              title="Spring Switches & Haptic Toggles"
+              description="Physics-based spring switches with layout morphing and hardware enclave toggles."
+              code={TOGGLE_CODE}
+            >
+              <InteractiveToggles />
+            </ComponentPreview>
+          </div>
+
+          {/* PLAYGROUND 4: Morphing Layout Tabs */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <LayoutTemplate className="size-4 text-primary" />
+              <h2 className="text-lg font-bold text-foreground">Morphing Layout Tabs (Tween-UI / Morphin)</h2>
+            </div>
+            <ComponentPreview
+              title="Gliding Pill Navigation"
+              description="Framer Motion layoutId tabs with spring velocity transitions."
+              code={TABS_CODE}
+            >
+              <InteractiveMorphTabs />
+            </ComponentPreview>
+          </div>
+
+          {/* PLAYGROUND 5: Interactive Dialog Modal */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Shield className="size-4 text-primary" />
+              <h2 className="text-lg font-bold text-foreground">Hardware Enclave Key Vault Modal</h2>
+            </div>
+            <ComponentPreview
+              title="Spring Modal & Backdrop Blur"
+              description="Accessible dialog primitive with smooth spring entry/exit and keychain details."
+              code={DIALOG_CODE}
+            >
+              <InteractiveDialogShowcase />
+            </ComponentPreview>
+          </div>
+
+          {/* Core Pillars */}
+          <div className="border-t border-border pt-8">
+            <h2 className="text-lg font-bold text-foreground">Core Product Pillars</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Zap className="size-4" />
+                </div>
+                <h3 className="mt-3 text-sm font-bold text-foreground">Zero Gas Friction</h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  All transactions are co-signed via Sato's sponsored gas pool. Users never touch or hold STX.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
+                  <Coins className="size-4" />
+                </div>
+                <h3 className="mt-3 text-sm font-bold text-foreground">Continuous Yield</h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  Holding sBTC in Sato automatically earns yield calculated on every Stacks block without deposit locks.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
+                  <CreditCard className="size-4" />
+                </div>
+                <h3 className="mt-3 text-sm font-bold text-foreground">Real-World Utility</h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  Integrated with VTPass to pay Nigerian utility bills, buy airtime, and withdraw directly to bank rails.
+                </p>
+              </div>
+            </div>
           </div>
         </section>
       )}
@@ -199,10 +304,6 @@ pnpm install`}
             />
 
             <h3 className="pt-4 text-sm font-bold text-foreground">2. Run the Clarity Test Suite</h3>
-            <p className="text-xs text-muted-foreground">
-              The test suite runs with simnet through the Stacks Clarinet SDK. All 99 contract tests verify access
-              controls, sliding windows, and exact integer yield mathematics.
-            </p>
             <CodeBlock
               language="bash"
               code={`# Run all 99 Vitest Clarity test suites
@@ -400,6 +501,14 @@ const myName = await lookupName(userAddress);`}
             </p>
           </div>
 
+          <ComponentPreview
+            title="Interactive Keychain Vault Modal"
+            description="Test the hardware enclave key storage modal."
+            code={DIALOG_CODE}
+          >
+            <InteractiveDialogShowcase />
+          </ComponentPreview>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-xl border border-border bg-card p-5">
               <h3 className="text-sm font-bold text-foreground">Zero Seed-Phrase Onboarding</h3>
@@ -415,29 +524,6 @@ const myName = await lookupName(userAddress);`}
                 never leaves the device unencrypted.
               </p>
             </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-bold text-foreground">Embedded Wallet Signing Flow</h3>
-            <CodeBlock
-              language="typescript"
-              code={`import * as SecureStore from "expo-secure-store";
-import { generateWallet } from "@stacks/wallet-sdk";
-
-// Create or retrieve stored mnemonic
-export async function getOrCreateWallet() {
-  let secret = await SecureStore.getItemAsync("sato_seed", {
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
-
-  if (!secret) {
-    const wallet = await generateWallet({ password: "" });
-    secret = wallet.encryptedSecretKey;
-    await SecureStore.setItemAsync("sato_seed", secret);
-  }
-  return secret;
-}`}
-            />
           </div>
         </section>
       )}
