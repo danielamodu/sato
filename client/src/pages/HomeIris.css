@@ -46,14 +46,18 @@
   padding: 15px 26px; cursor: pointer; border: 0;
   transition: transform .2s var(--iris-ease), background .2s ease, box-shadow .2s ease;
   text-decoration: none; white-space: nowrap;
+  will-change: transform;
 }
-.iris-btn svg { width: 16px; height: 16px; transition: transform .2s var(--iris-ease); }
+.iris-btn svg { width: 16px; height: 16px; transition: transform .28s cubic-bezier(.34,1.56,.64,1); }
 .iris-btn-dark { background: var(--iris-ink); color: #fff; box-shadow: 0 12px 28px rgba(13,17,23,.28); }
-.iris-btn-dark:hover { background: var(--iris-orange); transform: translateY(-2px); }
-.iris-btn-dark:hover svg { transform: translateX(3px); }
+.iris-btn-dark:hover { background: var(--iris-orange); transform: translateY(-2px) scale(1.02); box-shadow: 0 16px 36px rgba(241,90,36,.32); }
+.iris-btn-dark:hover svg { transform: translateX(5px) scale(1.08); }
+.iris-btn-dark:active { transform: scale(.97); }
 .iris-btn-light { background: rgba(255,255,255,.92); color: var(--iris-ink); box-shadow: 0 12px 28px rgba(30,60,120,.18); backdrop-filter: blur(8px); }
-.iris-btn-light:hover { transform: translateY(-2px); background: #fff; }
-.iris-btn:active { transform: scale(.97); }
+.iris-btn-light:hover { transform: translateY(-2px) scale(1.02); background: #fff; box-shadow: 0 16px 36px rgba(30,60,120,.26); }
+.iris-btn-light:hover svg { transform: translateX(5px) scale(1.08); }
+.iris-btn-light:active { transform: scale(.97); }
+@keyframes btn-jolt { 0% { transform: scale(1); } 35% { transform: scale(.95); } 60% { transform: scale(1.04); } 100% { transform: scale(1); } }
 
 /* ---- floating nav ---- */
 .iris-navwrap { position: fixed; top: max(14px, env(safe-area-inset-top)); left: 0; right: 0; z-index: 50; display: flex; justify-content: center; padding: 0 16px; pointer-events: none; }
@@ -198,15 +202,19 @@
 .iris-step-tag { position: absolute; top: 22px; right: 26px; font-size: 11px; font-weight: 800; letter-spacing: .14em; color: rgba(13,17,23,.4); }
 
 /* ---- integrations arc ---- */
-.iris-arc { text-align: center; position: relative; }
+.iris-arc { text-align: center; position: relative; overflow: clip; }
 .iris-arc-copy { max-width: 560px; margin: 0 auto; position: relative; z-index: 2; }
 .iris-arc-copy .iris-body { margin: 0 auto 28px; }
-.iris-orbit { position: relative; height: 300px; max-width: 760px; margin: 10px auto 0; user-select: none; -webkit-user-select: none; }
+.iris-orbit { position: relative; height: 340px; max-width: 760px; margin: 10px auto 0; user-select: none; -webkit-user-select: none; }
+.iris-orbit::before { content: ""; position: absolute; left: 6%; right: 6%; top: 50%; height: 1px; background: linear-gradient(90deg, transparent, #f15a2422, transparent); }
+.iris-orbit-scrub { position: absolute; left: 50%; top: 50%; width: 72%; height: 1px; transform: translate(-50%, -50%); background: linear-gradient(90deg, transparent, #f15a2433 50%, transparent); }
 .iris-orb-pos { position: absolute; transform: translate(-50%, -50%); user-select: none; -webkit-user-select: none; }
 .iris-orb-drag { display: block; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; will-change: transform; }
 .iris-orb-drag.dragging { cursor: grabbing; }
 .iris-orb .tip { user-select: none; -webkit-user-select: none; }
-.iris-orb { position: relative; border-radius: 50%; background: #fff; border: 1px solid var(--iris-line); display: grid; place-items: center; box-shadow: 0 14px 34px rgba(21,34,53,.1); cursor: grab; }
+.iris-orb { position: relative; border-radius: 50%; background: #fff; border: 1px solid var(--iris-line); display: grid; place-items: center; box-shadow: 0 14px 34px rgba(21,34,53,.1); cursor: grab; transition: box-shadow .2s ease, border-color .2s ease; }
+.iris-orb:hover { box-shadow: 0 20px 48px rgba(21,34,53,.16); border-color: #d9d4cc; }
+.iris-orb.active { box-shadow: 0 0 0 5px #f15a2422, 0 20px 48px rgba(21,34,53,.16); border-color: var(--iris-orange); }
 .iris-orb:active { cursor: grabbing; }
 .iris-orb .tip { position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px); background: var(--iris-ink); color: #fff; font-size: 11px; font-weight: 700; padding: 7px 12px; border-radius: 9px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all .2s ease; font-family: var(--iris-sans); }
 .iris-orb:hover .tip { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -218,6 +226,13 @@
 .iris-mini:hover { transform: translateY(-4px); box-shadow: 0 16px 34px rgba(21,34,53,.1); }
 .iris-mini strong { display: block; font-size: 14px; margin-bottom: 6px; font-family: var(--iris-sans); }
 .iris-mini p { margin: 0; font-size: 12.5px; color: var(--iris-grey); line-height: 1.55; }
+/* live filter bar — toggle.supply-inspired density */
+.iris-bento-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 18px; padding: 8px; background: #fff; border: 1px solid var(--iris-line); border-radius: 999px; width: fit-content; max-width: 100%; }
+.iris-bento-filter button { border: 1px solid transparent; background: none; border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 800; font-family: var(--iris-sans); color: #3d4652; cursor: pointer; transition: all .2s var(--iris-ease); white-space: nowrap; }
+.iris-bento-filter button:hover { background: #f6f5f0; color: var(--iris-ink); }
+.iris-bento-filter button.active { background: var(--iris-ink); color: #fff; border-color: var(--iris-ink); }
+.iris-bento-filter button.active .flt-count { background: rgba(255,255,255,.18); color: #fff; }
+.flt-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 999px; font-size: 11px; background: #ececea; color: #6b6b6b; margin-left: 6px; }
 .iris-bento-grid { display: grid; grid-template-columns: 1.15fr .95fr 1fr; gap: 14px; }
 .iris-card { border-radius: 22px; padding: 24px; border: 1px solid var(--iris-line); background: #fff; position: relative; overflow: hidden; transition: transform .22s var(--iris-ease), box-shadow .22s ease; min-height: 230px; display: flex; flex-direction: column; }
 .iris-card:hover { transform: translateY(-5px); box-shadow: 0 22px 48px rgba(21,34,53,.12); }
@@ -252,6 +267,7 @@
 
 /* ---- faq ---- */
 .iris-faq { display: grid; grid-template-columns: .8fr 1.2fr; gap: clamp(32px, 5vw, 80px); align-items: start; }
+.iris-faq .iris-acc-item { opacity: 0; transform: translateY(18px); transition: opacity .5s var(--iris-ease), transform .6s var(--iris-ease), border-color .2s ease, box-shadow .2s ease; }
 .iris-talk { display: inline-flex; align-items: center; gap: 8px; background: var(--iris-ink); color: #fff; border-radius: 999px; padding: 13px 22px; font-size: 13.5px; font-weight: 800; text-decoration: none; margin-top: 6px; transition: background .2s ease, transform .2s var(--iris-ease); }
 .iris-talk:hover { background: var(--iris-orange); transform: translateY(-2px); }
 .iris-acc { display: flex; flex-direction: column; gap: 10px; }
@@ -277,6 +293,36 @@
 .iris-success { display: inline-flex; align-items: center; gap: 12px; background: rgba(255,255,255,.95); border-radius: 999px; padding: 12px 24px 12px 12px; font-weight: 800; font-size: 14px; }
 .iris-success i { width: 34px; height: 34px; border-radius: 50%; background: #1d7a4c; color: #fff; display: grid; place-items: center; font-style: normal; }
 
+/* ---- trust strip ---- */
+.iris-trust-wrap { max-width: 1280px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 88px) clamp(36px, 5vw, 64px); }
+.iris-trust { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 24px; padding: 18px 26px; border: 1px solid var(--iris-line); border-radius: 999px; background: #fff; box-shadow: 0 4px 24px rgba(13,17,23,.04); }
+.iris-trust-label { font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--iris-muted); display: inline-flex; align-items: center; gap: 8px; }
+.iris-trust-label::after { content: "•"; color: #cfcbbe; font-size: 14px; margin-left: 2px; }
+.iris-trust-badges { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; }
+.iris-trust-badge { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: #3d4652; background: var(--iris-paper); border: 1px solid var(--iris-line); border-radius: 999px; padding: 8px 14px; line-height: 1; transition: transform .18s ease, border-color .18s ease; }
+.iris-trust-badge:hover { transform: translateY(-1px); border-color: #d0cbc3; }
+.iris-trust-badge svg { color: var(--iris-orange); flex-shrink: 0; }
+.iris-trust-badge.ok svg { color: #1d7a4c; }
+
+@media (max-width: 768px) {
+  .iris-trust { border-radius: 20px; padding: 16px; gap: 10px 14px; }
+  .iris-trust-label::after { display: none; }
+}
+
+/* ---- human empty / error (drawably-inspired) ---- */
+.iris-human { position: relative; border: 1.5px dashed #d8d2c7; border-radius: 18px; padding: 22px 18px; background: #fff; text-align: center; overflow: hidden; }
+.iris-human::before { content: ""; position: absolute; inset: -2px; border-radius: inherit; border: 1.5px solid #ececea; transform: rotate(-.6deg); pointer-events: none; }
+.iris-human-ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; margin: 0 auto 12px; background: var(--iris-peach); color: var(--iris-coral); }
+.iris-human p { font-size: 13px; color: var(--iris-grey); line-height: 1.6; margin: 0; }
+.iris-human strong { color: var(--iris-ink); }
+.iris-wobble { animation: wobble 2.2s ease-in-out infinite; transform-origin: center; }
+@keyframes wobble { 0%,100% { transform: rotate(-1.2deg); } 50% { transform: rotate(1.4deg); } }
+.iris-send-failed { background: #fdf0ea; border-color: #f5d9c8; }
+.iris-send-failed .iris-human-ic { background: #fde2d1; color: #c4502a; }
+
+/* ---- reduced motion ---- */
+@media (prefers-reduced-motion: reduce) { .iris-wobble { animation: none; } }
+
 /* ---- footer ---- */
 .iris-footer { background: var(--iris-paper); padding: 70px clamp(20px, 5vw, 88px) 0; overflow: hidden; }
 .iris-foot-grid { max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: 1.3fr .7fr .7fr 1.1fr; gap: 36px; padding-bottom: 60px; }
@@ -293,14 +339,26 @@
 .iris-foot-bottom { max-width: 1280px; margin: 0 auto; display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #e2e0d9; padding: 18px 0 8px; font-size: 11.5px; color: var(--iris-muted); font-weight: 600; flex-wrap: wrap; }
 .iris-wordmark { font-family: var(--iris-display); font-weight: 800; font-size: 28vw; line-height: .85; text-align: center; letter-spacing: -.055em; margin: 20px 0 -6vw; background: linear-gradient(180deg, #0d1117 30%, #c9c5bb 90%); -webkit-background-clip: text; background-clip: text; color: transparent; user-select: none; }
 
-/* ---- reveal ---- */
-.iris-reveal { opacity: 0; transform: translateY(28px); transition: opacity .7s var(--iris-ease), transform .8s var(--iris-ease); }
+/* ---- reveal — staggered entry (scroll-linked feel) ---- */
+.iris-reveal { opacity: 0; transform: translateY(34px); transition: opacity .72s var(--iris-ease), transform .84s var(--iris-ease); }
 .iris-reveal.in { opacity: 1; transform: none; }
+/* card stagger inside grids: each child lands a fraction later */
+.iris-bento-grid.in .iris-card:nth-child(1) { transition-delay: .04s; }
+.iris-bento-grid.in .iris-card:nth-child(2) { transition-delay: .12s; }
+.iris-bento-grid.in .iris-card:nth-child(3) { transition-delay: .2s; }
+.iris-bento-bottom.in .iris-card:nth-child(1) { transition-delay: .06s; }
+.iris-bento-bottom.in .iris-card:nth-child(2) { transition-delay: .14s; }
+.iris-how.in .iris-how-card { transition-delay: .08s; }
+.iris-acc.in .iris-acc-item:nth-child(1) { transition-delay: .02s; }
+.iris-acc.in .iris-acc-item:nth-child(2) { transition-delay: .06s; }
+.iris-acc.in .iris-acc-item:nth-child(3) { transition-delay: .1s; }
+.iris-acc.in .iris-acc-item:nth-child(4) { transition-delay: .14s; }
 
 /* ---- responsive ---- */
 @media (max-width: 1020px) {
   .iris-how, .iris-faq { grid-template-columns: 1fr; }
   .iris-bento-head { grid-template-columns: 1fr; }
+  .iris-bento-filter { border-radius: 18px; padding: 10px; }
   .iris-bento-grid { grid-template-columns: 1fr 1fr; }
   .iris-card.tall { grid-row: span 1; }
   .iris-foot-grid { grid-template-columns: 1fr 1fr; }

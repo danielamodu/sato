@@ -985,13 +985,15 @@ export default function Home() {
       </section>
 
       {/* ---------- trust strip ---------- */}
-      <div className="iris-trust iris-reveal">
-        <span className="iris-trust-label">Built with care</span>
-        <div className="iris-trust-badges">
-          <span className="iris-trust-badge ok"><ShieldCheck size={14} /> Non-custodial</span>
-          <span className="iris-trust-badge"><Bitcoin size={14} /> sBTC · Stacks testnet</span>
-          <span className="iris-trust-badge"><Receipt size={14} /> Fees shown before confirm</span>
-          <span className="iris-trust-badge ok"><Check size={14} /> Receipts for both sides</span>
+      <div className="iris-trust-wrap iris-reveal">
+        <div className="iris-trust">
+          <span className="iris-trust-label">Built with care</span>
+          <div className="iris-trust-badges">
+            <span className="iris-trust-badge ok"><ShieldCheck size={14} /> Non-custodial</span>
+            <span className="iris-trust-badge"><Bitcoin size={14} /> sBTC · Stacks testnet</span>
+            <span className="iris-trust-badge"><Receipt size={14} /> Fees shown before confirm</span>
+            <span className="iris-trust-badge ok"><Check size={14} /> Receipts for both sides</span>
+          </div>
         </div>
       </div>
 
