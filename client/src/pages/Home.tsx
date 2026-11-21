@@ -24,6 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { Link } from "wouter";
 import "./HomeIris.css";
 
 const logoSrc = "/assets/sato-logo.png";
@@ -1067,11 +1068,23 @@ export default function Home() {
           </div>
           <div className="iris-foot-col">
             <span>Product</span>
-            <a href="#how">Send</a><a href="#how">Earn</a><a href="#how">Cash out</a><a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a><a href="/security">Security</a>
+            <a href="#how">Send</a>
+            <a href="#how">Earn</a>
+            <a href="#how">Cash out</a>
+            <a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
           </div>
           <div className="iris-foot-col">
             <span>Company</span>
-            <a href="/people">For people</a><a href="/businesses">For businesses</a><a href="https://testnet.satoxbt.com/app">Testnet app</a><a href="mailto:team.satofinance@gmail.com">Contact</a>
+            <Link href="/people">For people</Link>
+            <Link href="/businesses">For businesses</Link>
+            <a href="https://testnet.satoxbt.com/app" target="_blank" rel="noopener noreferrer">Testnet app</a>
+            <a href="mailto:team.satofinance@gmail.com">Contact</a>
+          </div>
+          <div className="iris-foot-col">
+            <span>Legal & Trust</span>
+            <Link href="/privacy">Privacy Policy</Link>
+            <Link href="/terms">Terms of Service</Link>
+            <Link href="/security">Security</Link>
           </div>
           <div className="iris-news">
             <div className="iris-foot-col" style={{ marginBottom: 12 }}><span>Stay in the loop</span></div>
@@ -1088,7 +1101,15 @@ export default function Home() {
         </div>
         <div className="iris-foot-bottom">
           <span>© 2026 Sato. Built on Bitcoin.</span>
-          <span><a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>Docs</a> · <a href="/privacy" style={{ color: "inherit" }}>Privacy</a> · <a href="/terms" style={{ color: "inherit" }}>Terms</a></span>
+          <div className="iris-foot-legal">
+            <a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
+            <span className="dot">·</span>
+            <Link href="/privacy">Privacy Policy</Link>
+            <span className="dot">·</span>
+            <Link href="/terms">Terms of Service</Link>
+            <span className="dot">·</span>
+            <Link href="/security">Security</Link>
+          </div>
           <a href="#top" style={{ color: "inherit" }}>Back to top ↑</a>
         </div>
         <div className="iris-wordmark iris-reveal" aria-hidden="true">sato</div>
