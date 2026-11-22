@@ -163,4 +163,26 @@ describe("sato-vault", () => {
     expect(tokenBalance(wallet1)).toBeOk(Cl.uint(250_000));
     expect(tokenBalance(vault)).toBeOk(Cl.uint(0));
   });
+
+  it("blocks set-sbtc-token while funds are custodied (u504) and allows it once empty", () => {
+    mint(wallet1, 100_000);
+    deposit(wallet1, 100_000);
+
+    const blocked = simnet.callPublicFn(
+      "sato-vault",
+      "set-sbtc-token",
+      [Cl.principal(mockToken)],
+      deployer
+    );
+    expect(blocked.result).toBeErr(Cl.uint(504)); // ERR_VAULT_NOT_EMPTY
+
+    expect(withdraw(wallet1, 100_000).result).toBeOk(Cl.bool(true));
+    const allowed = simnet.callPublicFn(
+      "sato-vault",
+      "set-sbtc-token",
+      [Cl.principal(mockToken)],
+      deployer
+    );
+    expect(allowed.result).toBeOk(Cl.bool(true));
+  });
 });

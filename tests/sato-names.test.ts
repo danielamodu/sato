@@ -129,6 +129,26 @@ describe("sato-names", () => {
     expect(result).toBeErr(Cl.uint(203));
   });
 
+  it("rejects invalid handle characters (uppercase, spaces, @, punctuation) with u203", () => {
+    for (const bad of ["Alice", "alice bob", "@alice", "alice!", "alice.btc"]) {
+      const { result } = simnet.callPublicFn(
+        "sato-names",
+        "register-name",
+        [Cl.stringAscii(bad)],
+        wallet1
+      );
+      expect(result).toBeErr(Cl.uint(203));
+    }
+
+    const { result } = simnet.callPublicFn(
+      "sato-names",
+      "register-name",
+      [Cl.stringAscii("alice_01-x")],
+      wallet1
+    );
+    expect(result).toBeOk(Cl.bool(true));
+  });
+
   it("returns none when resolving an unregistered username", () => {
     const resolved = simnet.callReadOnlyFn(
       "sato-names",

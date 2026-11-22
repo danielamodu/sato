@@ -28,6 +28,7 @@
 (define-constant ERR_INSUFFICIENT_BALANCE (err u501))
 (define-constant ERR_UNAUTHORIZED (err u502))
 (define-constant ERR_WRONG_TOKEN (err u503))
+(define-constant ERR_VAULT_NOT_EMPTY (err u504))
 
 ;; Contract owner (deployer): may repoint the pinned sBTC token
 (define-constant CONTRACT_OWNER tx-sender)
@@ -57,11 +58,13 @@
   (var-get sbtc-token-contract)
 )
 
-;; Repoint the accepted sBTC token. Owner-only.
+;; Repoint the accepted sBTC token. Owner-only, and only while no funds are
+;; custodied so depositors can never be stranded under a mismatched token.
 ;; - new-token: the sBTC token principal to accept
 (define-public (set-sbtc-token (new-token principal))
   (begin
     (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (var-get total-deposited) u0) ERR_VAULT_NOT_EMPTY)
     (var-set sbtc-token-contract new-token)
     (print {event: "vault-set-token", owner: tx-sender, token: new-token})
     (ok true)

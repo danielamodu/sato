@@ -52,6 +52,8 @@ const findPrint = (events: any[], name: string) =>
 describe("sato-yield-v3: setup", () => {
   it("starts empty with the testnet default rates", () => {
     expect(read("get-total-supply")).toBeUint(0);
+    expect(read("get-total-locked")).toBeUint(0);
+    expect(read("get-total-tvl")).toBeUint(0);
     expect(read("get-total-yield-paid")).toBeUint(0);
     expect(read("get-base-rate")).toBeUint(Number(BASE));
     expect(read("get-boost-rate")).toBeUint(Number(BOOST));
@@ -188,9 +190,27 @@ describe("sato-yield-v3: lock tier (optional deposit for the boost rate)", () =>
 
     // Lock cleared; principal + boost yield returned to the liquid balance.
     expect(lockValue(wallet1)).toBeUint(0);
+    expect(read("get-total-locked")).toBeUint(0);
     expect(bal(wallet1)).toBeGreaterThanOrEqual(before + 500_000n + boostYield);
     // Nothing left to claim.
     expect(claimLock(wallet1).result).toBeErr(Cl.uint(506));
+  });
+
+  it("tracks total-locked and total-tvl across lock and claim-lock", () => {
+    deposit(wallet1, 1_000_000);
+    expect(read("get-total-supply")).toBeUint(1_000_000);
+    expect(read("get-total-locked")).toBeUint(0);
+    expect(read("get-total-tvl")).toBeUint(1_000_000);
+
+    expect(lock(wallet1, 400_000, 10).result).toBeOk(Cl.bool(true));
+    expect(read("get-total-locked")).toBeUint(400_000);
+    const liquidAfterLock = (read("get-total-supply") as { value: bigint }).value;
+    expect(read("get-total-tvl")).toBeUint(Number(liquidAfterLock + 400_000n));
+
+    simnet.mineEmptyBlocks(15);
+    expect(claimLock(wallet1).result).toBeOk(Cl.bool(true));
+    expect(read("get-total-locked")).toBeUint(0);
+    expect(read("get-total-tvl")).toEqual(read("get-total-supply"));
   });
 });
 

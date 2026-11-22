@@ -24,11 +24,24 @@
 ;; Contract owner (deployer)
 (define-constant CONTRACT_OWNER tx-sender)
 
+;; Allowed username characters: lowercase ASCII letters, digits, `-` and `_`.
+(define-constant VALID_CHARS "abcdefghijklmnopqrstuvwxyz0123456789-_")
+
 ;; Forward resolution: username -> principal
 (define-map names (string-ascii 32) principal)
 
 ;; Reverse lookup: principal -> username
 (define-map owners principal (string-ascii 32))
+
+;; Fold helper: ensure every ASCII character belongs to VALID_CHARS.
+(define-private (is-valid-char (ch (string-ascii 1)) (acc bool))
+  (and acc (is-some (index-of? VALID_CHARS ch)))
+)
+
+;; Read-only: is `name` non-empty and composed exclusively of valid handle chars?
+(define-read-only (is-valid-name (name (string-ascii 32)))
+  (and (> (len name) u0) (fold is-valid-char name true))
+)
 
 ;; Read-only: resolve a username to its principal (none if unregistered)
 (define-read-only (resolve-name (name (string-ascii 32)))
@@ -54,8 +67,8 @@
     (
       (owner tx-sender)
     )
-    ;; Reject empty names
-    (asserts! (> (len name) u0) ERR_INVALID_NAME)
+    ;; Reject empty or invalid-character names (e.g. uppercase, spaces, `@`)
+    (asserts! (is-valid-name name) ERR_INVALID_NAME)
     ;; Username must not already be taken
     (asserts! (is-none (map-get? names name)) ERR_ALREADY_REGISTERED)
     ;; Caller must not already hold a username

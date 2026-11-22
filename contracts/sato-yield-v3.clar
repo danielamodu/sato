@@ -53,6 +53,8 @@
 
 ;; Total realized sBTC in liquid balances (grows as yield is settled).
 (define-data-var total-supply uint u0)
+;; Total principal currently locked in boost positions.
+(define-data-var total-locked uint u0)
 ;; Lifetime yield minted into balances, for transparency.
 (define-data-var total-yield-paid uint u0)
 
@@ -88,6 +90,8 @@
   (+ (get balance (get-account who)) (pending-balance-yield who)))
 
 (define-read-only (get-total-supply) (var-get total-supply))
+(define-read-only (get-total-locked) (var-get total-locked))
+(define-read-only (get-total-tvl) (+ (var-get total-supply) (var-get total-locked)))
 (define-read-only (get-total-yield-paid) (var-get total-yield-paid))
 (define-read-only (get-base-rate) (var-get base-rate-bps))
 (define-read-only (get-boost-rate) (var-get boost-rate-bps))
@@ -177,6 +181,7 @@
       (asserts! (>= bal amount) ERR_INSUFFICIENT_BALANCE)
       (map-set accounts user {balance: (- bal amount), height: stacks-block-height})
       (var-set total-supply (- (var-get total-supply) amount))
+      (var-set total-locked (+ (var-get total-locked) amount))
       (map-set locks user
         {amount: amount, height: stacks-block-height, unlock: (+ stacks-block-height term-blocks)})
       (print {event: "yield-lock", user: user, amount: amount,
@@ -197,6 +202,7 @@
           {balance: (+ (get balance (get-account user)) payout),
            height: stacks-block-height})
         (var-set total-supply (+ (var-get total-supply) payout))
+        (var-set total-locked (- (var-get total-locked) (get amount lk)))
         (var-set total-yield-paid (+ (var-get total-yield-paid) y))
         (map-delete locks user)
         (print {event: "yield-claim", user: user, principal: (get amount lk), yield: y})
