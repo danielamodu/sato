@@ -6,8 +6,8 @@ export default function Security() {
       eyebrow="Security Architecture"
       title="Security, verified by cryptography."
       intro="Sato is architected around defense-in-depth principles: zero server-side key custody, hardware enclave isolation on-device, and mathematically rigorous Clarity smart contracts."
-      updated="October 2026"
-      statusBadge="Verified"
+      updated="November 2026"
+      statusBadge="Testnet Preview"
       asideTitle="Zero-Custody Architecture"
       asideText="Your cryptographic keys never touch our servers. Transactions are authorized strictly on your device using hardware-isolated encryption."
       sections={[
@@ -20,33 +20,33 @@ export default function Security() {
           ],
         },
         {
-          heading: "2. Smart Contract Rigor (99 Automated Test Suites)",
+          heading: "2. Smart Contract Rigor (Automated Clarinet Test Suite)",
           body: [
             "All core logic in Sato is written in Clarity — Stacks' decidable, non-Turing-complete smart contract language. Clarity prevents entire classes of exploits (such as re-entrancy and unexpected loops) by design.",
-            "Our contracts are accompanied by 99 automated integration tests executed against the official Stacks Clarinet SDK. Tests verify mathematical accuracy, continuous yield accumulation, sliding-window rate limit resets, and strict access controls across multi-user scenarios.",
+            "Our contracts are accompanied by 100+ automated integration tests across 7 Clarinet SDK test suites, plus dedicated API security unit tests. Tests verify mathematical accuracy, continuous yield accumulation, sliding-window rate limit resets, on-chain handle validation, and strict access controls across multi-user scenarios.",
           ],
         },
         {
           heading: "3. Checks-Effects-Interactions & Token Pinning",
           body: [
             "Our custody contracts (such as sato-vault.clar) strictly enforce the checks-effects-interactions pattern to ensure balances are settled before external transfers are initiated.",
-            "To prevent trait spoofing (a common vector where an attacker passes a fake token contract), sato-vault pins the accepted token to the canonical sBTC SIP-010 token address. Calls using unauthorized tokens revert immediately on-chain.",
+            "To prevent trait spoofing (a common vector where an attacker passes a fake token contract), sato-vault pins the accepted token to the canonical sBTC SIP-010 token address and blocks repointing the token while user deposits are held in custody.",
           ],
         },
         {
           heading: "4. Gasless Relay Defenses (/api/sponsor)",
           body: [
             "Sato's co-signing relay is protected against gas pool draining and mempool spam:",
-            "• Strict Allowlist: The relay deserializes incoming raw transactions and verifies they only target authorized Sato contracts (sato-yield-v3, sato-names, sato-sponsor). Requests calling arbitrary contracts are rejected.",
+            "• Strict Allowlist: The relay deserializes incoming raw transactions and verifies they only target active Sato v3 functions on sato-yield-v3, sato-names, and sato-sponsor. Requests calling arbitrary or superseded contracts are rejected.",
             "• Fixed Fee Enforcement: The server attaches a hardcoded fee of 50,000 µSTX (0.05 STX). Clients cannot manipulate gas fees or cause fee burning.",
-            "• Atomic Rate Limits: Upstash Redis enforces an atomic 200 transaction per 24-hour window per origin address.",
+            "• Layered Rate Limits: Upstash Redis enforces atomic per-address and per-IP sliding-window limits and fails closed when sender attribution cannot be verified.",
           ],
         },
         {
-          heading: "5. Cryptographic Quote Verification (HMAC-SHA256)",
+          heading: "5. Cryptographic Quote & Payer Binding (HMAC-SHA256 + RSV)",
           body: [
-            "When executing utility bill payments or Naira offramps, live exchange rates are locked into an HMAC-SHA256 signed quote with a 20-minute time-to-live (TTL).",
-            "The verification server uses constant-time string comparisons (timingSafeEqual) to prevent timing attacks, and checks the Stacks blockchain independently before initiating any fiat payout.",
+            "When executing utility bill payments or Naira offramps, live exchange rates are locked into an HMAC-SHA256 signed quote with a 20-minute time-to-live (TTL), verified with constant-time comparisons (timingSafeEqual).",
+            "Every fulfillment request independently verifies the confirmed on-chain payment on Stacks, requires a wallet-signed authorization binding that txid to its exact biller or bank destination (blocking mempool front-running), and claims the normalized txid atomically in one shared treasury namespace so a payment can never be redeemed twice.",
           ],
         },
         {
