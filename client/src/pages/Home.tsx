@@ -30,6 +30,38 @@ import "./HomeIris.css";
 const logoSrc = "/assets/sato-logo.png";
 const BTC_USD = 65000;
 
+/* ---------- thinking-orbs (orbs.jakubantalik.com): 3x3 dot-matrix wave indicator ---------- */
+function ThinkingOrb({ color = "#16a34a" }: { color?: string }) {
+  return (
+    <svg className="iris-think-orb" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+      {[0, 1, 2].map((r) =>
+        [0, 1, 2].map((c) => {
+          const delay = ((r + c) * 0.16).toFixed(2);
+          return (
+            <circle
+              key={`${r}-${c}`}
+              cx={2 + c * 3.5}
+              cy={2 + r * 3.5}
+              r="1.15"
+              fill={color}
+              style={{ animationDelay: `${delay}s` }}
+            />
+          );
+        }),
+      )}
+    </svg>
+  );
+}
+
+const tickerItems = [
+  { tag: "SETTLED", text: "@amani → 0.012 sBTC ($780.00)", meta: "0.4s · Gasless" },
+  { tag: "YIELD", text: "sBTC Vault v3 · +4.8% APY", meta: "SIP-010 · Accruing" },
+  { tag: "CASHOUT", text: "0.008 sBTC → NGN Bank Rail", meta: "HMAC Quote · Verified" },
+  { tag: "MERCHANT", text: "@corner-cafe · QR Receipt #8F4A", meta: "Zero address copy" },
+  { tag: "SPONSOR", text: "Gas Pool Active · 100% fee coverage", meta: "Stacks L2 Testnet" },
+  { tag: "CUSTODY", text: "Hardware Enclave Keys · Self-custodial", meta: "Passkey / Biometric" },
+];
+
 /* ---------- shared waitlist hook ---------- */
 function useWaitlist(audience: string) {
   const [email, setEmail] = useState("");
@@ -146,8 +178,8 @@ function CountUp({ to, duration = 1400 }: { to: number; duration?: number }) {
 
 type LiveTarget = { currentTarget: HTMLElement; clientX: number; clientY: number };
 
-/* ---------- 3D tilt props for cards (fine pointers only) ---------- */
-function useTilt(max = 7) {
+/* ---------- 3D tilt + cursor spotlight props for cards (fine pointers only) ---------- */
+function useTilt(max = 2.2) {
   const reduceMotion = useReducedMotion();
   const fine = useMemo(
     () => typeof window !== "undefined" && window.matchMedia("(pointer:fine)").matches,
@@ -160,10 +192,14 @@ function useTilt(max = 7) {
       onMouseMove: (e: LiveTarget) => {
         const el = e.currentTarget;
         const r = el.getBoundingClientRect();
-        const px = (e.clientX - r.left) / r.width - 0.5;
-        const py = (e.clientY - r.top) / r.height - 0.5;
-        el.style.transition = "transform .12s ease-out";
-        el.style.transform = `perspective(900px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg) translateY(-4px)`;
+        const x = e.clientX - r.left;
+        const y = e.clientY - r.top;
+        const px = x / r.width - 0.5;
+        const py = y / r.height - 0.5;
+        el.style.setProperty("--mx", `${x.toFixed(0)}px`);
+        el.style.setProperty("--my", `${y.toFixed(0)}px`);
+        el.style.transition = "transform .14s ease-out";
+        el.style.transform = `perspective(1100px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg) translateY(-3px)`;
       },
       onMouseLeave: (e: LiveTarget) => {
         const el = e.currentTarget;
@@ -318,7 +354,7 @@ const slides = [
     pill: "Send",
     headline: "From @username to done, clearly.",
     body: "Pick a person or business by name, see Bitcoin and local money side by side, and confirm knowing exactly what moves.",
-    grad: "linear-gradient(135deg,#fbe3d3 0%,#f6d9e2 38%,#c9d8f2 100%)",
+    grad: "linear-gradient(145deg, #f6ece3 0%, #efe6dc 52%, #e4ebf4 100%)",
     conn: ["You", "@amani"],
     docs: [
       { icon: Send, bg: "#f15a24", title: "@amani · 0.012 sBTC", sub: "≈ $780.42 · fee $0.40 · preview" },
@@ -335,7 +371,7 @@ const slides = [
     pill: "Earn",
     headline: "Your balance keeps working quietly.",
     body: "No second account, no homework. The sBTC sitting in Sato keeps earning in the background while you spend.",
-    grad: "linear-gradient(135deg,#fdf3e3 0%,#e4ecf9 55%,#cfe0f5 100%)",
+    grad: "linear-gradient(145deg, #ebf2ee 0%, #e5edf7 55%, #dce6f3 100%)",
     conn: ["Balance", "+ yield"],
     docs: [
       { icon: PiggyBank, bg: "#1d7a4c", title: "Balance · $2,480.65", sub: "+$3.12 this week · illustrative" },
@@ -352,7 +388,7 @@ const slides = [
     pill: "Cash out",
     headline: "Back to local money on your terms.",
     body: "Move from Bitcoin to your bank when you need it, with the cost and timing stated before you tap confirm.",
-    grad: "linear-gradient(135deg,#e6edf8 0%,#f6e3d4 60%,#f9cfae 100%)",
+    grad: "linear-gradient(145deg, #e8eef7 0%, #f1eae2 58%, #f4e2d3 100%)",
     conn: ["sBTC", "Your bank"],
     docs: [
       { icon: Banknote, bg: "#111925", title: "$500 → Chase ····42", sub: "Arrives 1–2 days · preview" },
@@ -440,11 +476,10 @@ export default function Home() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [bentoFilter, setBentoFilter] = useState<"all" | "send" | "earn" | "cashout">("all");
-  const [failedSend, setFailedSend] = useState(false);
   const orbitRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLElement>(null);
   const arcRef = useRef<HTMLElement>(null);
-  const tilt = useTilt(7);
+  const tilt = useTilt(2.2);
   const magnet = useMagnetic(5);
   const { scrollYProgress } = useScroll();
   const { scrollYProgress: heroProgress } = useScroll({
@@ -482,24 +517,15 @@ export default function Home() {
   /* interactive send demo */
   const [to, setTo] = useState("@amani");
   const [satAmt, setSatAmt] = useState(0.012);
-  const [sendState, setSendState] = useState<"idle" | "sending" | "done" | "failed">("idle");
+  const [sendState, setSendState] = useState<"idle" | "sending" | "done">("idle");
   const fiat = useMemo(() => satAmt * BTC_USD, [satAmt]);
   function reviewSend() {
-    if (sendState !== "idle" && sendState !== "failed") return;
-    if (Math.random() < 0.12 && !failedSend) {
-      setSendState("sending");
-      window.setTimeout(() => {
-        setSendState("failed");
-        setFailedSend(true);
-      }, 1100);
-      return;
-    }
+    if (sendState !== "idle") return;
     setSendState("sending");
     window.setTimeout(() => {
       setSendState("done");
       setBurstId((b) => b + 1);
-      setFailedSend(false);
-    }, 1400);
+    }, 1100);
   }
   const burstParts = useMemo(
     () =>
@@ -663,14 +689,14 @@ export default function Home() {
         <motion.div className="iris-phones" style={reduce ? undefined : { y: phoneSink }}>
           <motion.div
             className="iris-phone left"
-            animate={reduce ? undefined : { y: [0, -10, 0] }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-            style={reduce || isMobile ? undefined : { x: mouse.x * -14, rotate: -7 + mouse.x * 2 }}
+            animate={reduce ? undefined : { y: [0, -5, 0] }}
+            transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
+            style={reduce || isMobile ? undefined : { x: mouse.x * -10, rotate: -2.5 + mouse.x * 1.4 }}
           >
             <div className="iris-screen">
               <div className="iris-notch"><i /></div>
               <div className="iris-screen-body">
-                <div className="iris-screen-top"><small>SATO · PREVIEW</small><span className="iris-live"><i />LIVE DEMO</span></div>
+                <div className="iris-screen-top"><small>SATO · PREVIEW</small><span className="iris-live"><ThinkingOrb />LIVE DEMO</span></div>
                 <h3 className="iris-send-title">Send to<br />anyone.</h3>
                 <div className="iris-field">
                   <label>RECIPIENT</label>
@@ -687,7 +713,7 @@ export default function Home() {
                     aria-label="Amount in sBTC"
                   />
                 </div>
-                <div className="iris-fee-row"><span>Fee $0.40 · shown upfront</span><span>≈ 10 min</span></div>
+                <div className="iris-fee-row"><span>Fee $0.40 · shown upfront</span><span>≈ 10 sec</span></div>
                 <AnimatePresence mode="wait">
                   {sendState === "done" ? (
                     <motion.div
@@ -717,7 +743,7 @@ export default function Home() {
                       key="btn" className="iris-review-btn" onClick={reviewSend} disabled={sendState === "sending"}
                       whileTap={{ scale: 0.98 }}
                     >
-                      {sendState === "sending" ? "Sending…" : <>Review payment <ArrowRight size={15} /></>}
+                      {sendState === "sending" ? "Confirming on Stacks…" : <>Review payment <ArrowRight size={15} /></>}
                     </motion.button>
                   )}
                 </AnimatePresence>
@@ -733,14 +759,14 @@ export default function Home() {
 
           <motion.div
             className="iris-phone right"
-            animate={reduce ? undefined : { y: [0, 10, 0] }}
-            transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
-            style={reduce || isMobile ? undefined : { x: mouse.x * 14, rotate: 6 + mouse.x * 2 }}
+            animate={reduce ? undefined : { y: [0, 5, 0] }}
+            transition={{ duration: 7.2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+            style={reduce || isMobile ? undefined : { x: mouse.x * 10, rotate: 2.5 + mouse.x * 1.4 }}
           >
             <div className="iris-screen">
               <div className="iris-notch"><i /></div>
               <div className="iris-screen-body">
-                <div className="iris-screen-top"><small>GOOD MORNING, SAM</small><span className="iris-live"><i />EARNING</span></div>
+                <div className="iris-screen-top"><small>PORTFOLIO · SAM</small><span className="iris-live"><ThinkingOrb />EARNING</span></div>
                 <div className="iris-balance-card">
                   <small>TOTAL BALANCE</small>
                   <div className="big">${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -758,18 +784,27 @@ export default function Home() {
                       className={phoneTab === i ? "iris-chip active" : "iris-chip"}
                       onClick={() => setPhoneTab(i)}
                     >
-                      <b>{v.chip[0]}</b><small>{v.chip[1]}</small>
+                      {phoneTab === i && (
+                        <motion.span
+                          layoutId="phone-tab-pill"
+                          className="iris-chip-bg"
+                          transition={{ type: "spring", stiffness: 440, damping: 32 }}
+                        />
+                      )}
+                      <span className="iris-chip-txt">
+                        <b>{v.chip[0]}</b><small>{v.chip[1]}</small>
+                      </span>
                     </button>
                   ))}
                 </div>
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={phoneTab}
-                    initial={{ opacity: 0, x: 18 }}
+                    initial={{ opacity: 0, x: 14 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -18 }}
-                    transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
-                    style={{ display: "flex", flexDirection: "column", gap: 12 }}
+                    exit={{ opacity: 0, x: -14 }}
+                    transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+                    style={{ display: "flex", flexDirection: "column", gap: 10 }}
                   >
                     {phoneViews[phoneTab].rows.map((r) => (
                       <div className="iris-txn" key={r.t}>
@@ -786,6 +821,19 @@ export default function Home() {
         </motion.div>
       </header>
 
+      {/* ---------- live settlement marquee (pay.ethena.fi pattern) ---------- */}
+      <div className="iris-ticker-strip" aria-label="Live protocol telemetry">
+        <div className="iris-ticker-track">
+          {[...tickerItems, ...tickerItems].map((item, idx) => (
+            <div className="iris-ticker-item" key={idx}>
+              <span className="iris-ticker-tag">{item.tag}</span>
+              <span className="iris-ticker-text">{item.text}</span>
+              <span className="iris-ticker-meta">{item.meta}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* ---------- how it works ---------- */}
       <section
         className="iris-section iris-how" id="how"
@@ -795,19 +843,38 @@ export default function Home() {
         <div className="iris-reveal">
           <span className="iris-eyebrow"><Zap size={13} /> How it works</span>
           <AnimatePresence mode="wait">
-            <motion.div key={active.key} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.35 }}>
+            <motion.div key={active.key} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.32 }}>
               <h2>{active.headline}</h2>
               <p className="iris-body">{active.body}</p>
             </motion.div>
           </AnimatePresence>
           <div className="iris-carousel-ctrl">
-            <button className="iris-arrow" aria-label="Previous step" onClick={() => setSlide((s) => (s + slides.length - 1) % slides.length)}>←</button>
-            <button className="iris-arrow" aria-label="Next step" onClick={() => setSlide((s) => (s + 1) % slides.length)}>→</button>
-            <span className="iris-dots">
+            <div className="iris-step-tabs" role="tablist" aria-label="How Sato works steps">
               {slides.map((s, i) => (
-                <button key={s.key} className={i === slide ? "iris-dot active" : "iris-dot"} aria-label={`Go to ${s.pill}`} onClick={() => setSlide(i)} />
+                <button
+                  key={s.key}
+                  role="tab"
+                  aria-selected={i === slide}
+                  className={i === slide ? "iris-step-tab active" : "iris-step-tab"}
+                  onClick={() => setSlide(i)}
+                >
+                  {i === slide && (
+                    <motion.span
+                      layoutId="how-step-pill"
+                      className="iris-step-tab-bg"
+                      transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                    />
+                  )}
+                  <span className="iris-step-tab-txt">
+                    <em>0{i + 1}</em> {s.pill}
+                  </span>
+                </button>
               ))}
-            </span>
+            </div>
+            <div className="iris-arrow-group">
+              <button className="iris-arrow" aria-label="Previous step" onClick={() => setSlide((s) => (s + slides.length - 1) % slides.length)}>←</button>
+              <button className="iris-arrow" aria-label="Next step" onClick={() => setSlide((s) => (s + 1) % slides.length)}>→</button>
+            </div>
           </div>
           {!reduce && (
             <span className="iris-auto" aria-hidden="true">
@@ -826,10 +893,13 @@ export default function Home() {
               key={active.key}
               className="iris-how-card"
               style={{ background: active.grad }}
-              initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}
-              transition={{ duration: 0.45, ease: [0.23, 1, 0.32, 1] }}
+              initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -28 }}
+              transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
             >
-              <span className="iris-step-tag">0{slide + 1} / 03 · {active.pill.toUpperCase()}</span>
+              <div className="iris-how-top">
+                <span className="iris-how-badge"><ThinkingOrb /> LIVE SETTLEMENT FLOW</span>
+                <span className="iris-step-tag">0{slide + 1} / 03 · {active.pill.toUpperCase()}</span>
+              </div>
               <div
                 className="iris-glass"
                 onMouseMove={(e) => {
@@ -840,15 +910,15 @@ export default function Home() {
                 }}
               >
                 <div className="iris-conn-row">
-                  <span className="iris-conn-ic" style={{ background: "#0d1117" }}>{active.conn[0].slice(0, 2)}</span>
+                  <span className="iris-conn-pill">{active.conn[0]}</span>
                   <span className="iris-conn-link" />
-                  <span className="iris-conn-ic" style={{ background: "#f15a24" }}><ArrowLeftRight size={15} /></span>
+                  <span className="iris-conn-ic" style={{ background: "#f15a24" }}><ArrowLeftRight size={14} /></span>
                   <span className="iris-conn-link" />
-                  <span className="iris-conn-ic" style={{ background: "#1d7a4c" }}>{active.conn[1].slice(0, 2)}</span>
+                  <span className="iris-conn-pill ok">{active.conn[1]}</span>
                 </div>
                 {active.docs.map((d) => (
                   <div className="iris-doc" key={d.title}>
-                    <span className="di" style={{ background: `${d.bg}14`, color: d.bg }}><d.icon size={16} /></span>
+                    <span className="di" style={{ background: `${d.bg}12`, color: d.bg }}><d.icon size={16} /></span>
                     <span><strong>{d.title}</strong><small>{d.sub}</small></span>
                   </div>
                 ))}
@@ -868,11 +938,11 @@ export default function Home() {
       {/* ---------- integrations arc ---------- */}
       <section className="iris-section iris-arc" id="flow" ref={arcRef}>
         <div className="iris-orbit" ref={orbitRef} aria-hidden="true">
+          <div className="iris-orbit-rings" />
           <motion.div className="iris-orbit-scrub" style={{ opacity: useTransform(arcProgress, [0, 0.5, 1], [0, 1, 0]) }} />
-          {orbs.map((o, i) => {
-            const isActive = !reduce && !isMobile;
-            return <Bubble key={o.label} o={o} i={i} total={orbs.length} active={false} disabled={isMobile} reduce={!!reduce} />;
-          })}
+          {orbs.map((o, i) => (
+            <Bubble key={o.label} o={o} i={i} total={orbs.length} active={!reduce && !isMobile && (i === 0 || i === 2 || i === 4)} disabled={isMobile} reduce={!!reduce} />
+          ))}
         </div>
         <motion.div
           className="iris-orbit-progress"
@@ -887,7 +957,7 @@ export default function Home() {
             Sato connects the pieces so you never touch an address or a second app.
           </p>
           <motion.a className="iris-btn iris-btn-dark" href="#get" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Start with Sato <ArrowRight size={16} /></motion.a>
-          <p className="iris-drag-hint">Psst — grab a bubble.</p>
+          <p className="iris-drag-hint">INTERACTIVE ARCH · DRAG ANY NODE</p>
         </div>
       </section>
 
@@ -900,21 +970,44 @@ export default function Home() {
             <p className="iris-body">Three jobs, one calm surface. Everything states its cost and status before you confirm — no tutorials required.</p>
           </div>
           <div className="iris-mini-cards iris-reveal">
-            <div className="iris-mini"><strong>No addresses, ever</strong><p>Pay people and shops by @name or QR. Copy-paste is not a feature here.</p></div>
-            <div className="iris-mini"><strong>Fees stated upfront</strong><p>Amount, fee, arrival estimate — all visible before your thumb moves.</p></div>
+            <div className="iris-mini">
+              <span className="iris-mini-kicker">01 · HUMAN DIRECTORY</span>
+              <strong>No addresses, ever</strong>
+              <p>Pay people and shops by @name or QR. Copy-paste is not a feature here.</p>
+            </div>
+            <div className="iris-mini">
+              <span className="iris-mini-kicker">02 · DETERMINISTIC QUOTES</span>
+              <strong>Fees stated upfront</strong>
+              <p>Amount, fee, arrival estimate — all visible before your thumb moves.</p>
+            </div>
           </div>
         </div>
         <div className="iris-bento-filter iris-reveal" role="tablist" aria-label="Filter features">
-          {(["all","send","earn","cashout"] as const).map((f) => (
-            <button key={f} role="tab" aria-selected={bentoFilter===f} className={bentoFilter===f ? "active" : ""} onClick={() => setBentoFilter(f)}>
-              {f === "all" ? "All" : f === "send" ? "Send" : f === "earn" ? "Earn" : "Cash out"} <span className="flt-count">{f==="all" ? 6 : f==="send" ? 3 : f==="earn" ? 1 : 2}</span>
-            </button>
-          ))}
+          {(["all", "send", "earn", "cashout"] as const).map((f) => {
+            const isAct = bentoFilter === f;
+            return (
+              <button key={f} role="tab" aria-selected={isAct} className={isAct ? "active" : ""} onClick={() => setBentoFilter(f)}>
+                {isAct && (
+                  <motion.span
+                    layoutId="bento-filter-pill"
+                    className="iris-flt-bg"
+                    transition={{ type: "spring", stiffness: 440, damping: 32 }}
+                  />
+                )}
+                <span className="iris-flt-txt">
+                  {f === "all" ? "All modules" : f === "send" ? "Send & Receipts" : f === "earn" ? "Earn Yield" : "Cash out & Rails"}{" "}
+                  <span className="flt-count">{f === "all" ? 5 : f === "send" ? 3 : f === "earn" ? 1 : 2}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
         <div className="iris-bento-grid">
-          <div className="iris-card peach tall iris-reveal" {...tilt}>
-            <span className="iris-tag">Send</span>
-            <span className="iris-ic"><AtSign size={18} /></span>
+          <div className={`iris-card peach tall iris-reveal ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...tilt}>
+            <div className="iris-card-top">
+              <span className="iris-tag">Send · Directory</span>
+              <span className="iris-ic"><AtSign size={17} /></span>
+            </div>
             <h3>Send to @anyone in seconds.</h3>
             <p>Type a name, set an amount, see both currencies. The receipt both sides can read.</p>
             <div className="iris-card-mock">
@@ -923,13 +1016,13 @@ export default function Home() {
                 <input
                   value={dirQuery}
                   onChange={(e) => setDirQuery(e.target.value)}
-                  placeholder="Try “mama” or “cafe”…"
+                  placeholder="Search @mama, @cafe, @amani…"
                   aria-label="Search usernames"
                 />
               </label>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                 {dirMatches.length === 0 && (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#6b6b6b" }}>No matches — invite them to Sato.</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#6b6b6b" }}>No matches — invite them to Sato.</span>
                 )}
                 {dirMatches.map((u) => (
                   <button
@@ -943,44 +1036,83 @@ export default function Home() {
               </div>
               {picked && (
                 <p className="iris-pick-hint">
-                  {picked} loaded — <a href="#top">try it in the phone demo ↑</a>
+                  {picked} loaded — <a href="#top">test in the live phone demo ↑</a>
                 </p>
               )}
             </div>
           </div>
           <div className="iris-col-stack">
-            <div className="iris-card iris-reveal" {...tilt}>
-              <span className="iris-tag">Clarity</span>
-              <span className="iris-ic"><Receipt size={18} /></span>
-              <h3 style={{ fontSize: 22 }}>Costs before confirm.</h3>
-              <p>Fee, rate lock, arrival window. Nothing buried.</p>
+            <div className={`iris-card iris-reveal ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...tilt}>
+              <div className="iris-card-top">
+                <span className="iris-tag">Clarity</span>
+                <span className="iris-ic"><Receipt size={17} /></span>
+              </div>
+              <h3>Costs before confirm.</h3>
+              <p>Fee, rate lock, arrival window. Nothing buried behind the button.</p>
+              <div className="iris-micro-ledger">
+                <div><span>NETWORK FEE</span><strong>$0.40 · Sponsored</strong></div>
+                <div><span>RATE LOCK</span><strong className="ok">00:30 Guaranteed</strong></div>
+              </div>
             </div>
-            <div className="iris-card iris-reveal" {...tilt}>
-              <span className="iris-tag">Receipts</span>
-              <span className="iris-ic"><Check size={18} /></span>
-              <h3 style={{ fontSize: 22 }}>Both sides see done.</h3>
-              <p>Sender and merchant share one clear confirmation.</p>
+            <div className={`iris-card iris-reveal ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...tilt}>
+              <div className="iris-card-top">
+                <span className="iris-tag">Receipts</span>
+                <span className="iris-ic"><Check size={17} /></span>
+              </div>
+              <h3>Both sides see done.</h3>
+              <p>Sender and merchant share one verifiable settlement proof.</p>
+              <div className="iris-proof-strip">
+                <span className="iris-proof-party"><i>✓</i> @you</span>
+                <span className="iris-proof-line" />
+                <span className="iris-proof-hash">TX #8F4A · SETTLED</span>
+                <span className="iris-proof-line" />
+                <span className="iris-proof-party"><i>✓</i> @cafe</span>
+              </div>
             </div>
           </div>
-          <div className="iris-card black tall iris-reveal" {...tilt}>
-            <span className="iris-tag">Earn · Preview</span>
-            <span className="iris-ic"><PiggyBank size={18} /></span>
+          <div className={`iris-card black tall iris-reveal ${bentoFilter !== "all" && bentoFilter !== "earn" ? "dimmed" : ""}`} {...tilt}>
+            <div className="iris-card-top">
+              <span className="iris-tag">Earn · Preview</span>
+              <span className="iris-ic"><PiggyBank size={17} /></span>
+            </div>
             <h3>Balance that works while it sits.</h3>
-            <p>No second account. Watch it tick — illustrative, live mechanics at launch.</p>
-            <div className="iris-card-mock">
+            <p>No second account or lockup maze. Watch it accrue in real time — live mechanics published at launch.</p>
+            <div className="iris-card-mock iris-earn-box">
+              <div className="iris-earn-meta">
+                <span>LIVE ACCRUAL PREVIEW</span>
+                <span className="iris-apy-pill">+4.8% APY · sBTC</span>
+              </div>
               <div className="iris-earn-num">${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
               <div className="iris-earn-bar"><i /></div>
+              <div className="iris-earn-foot">
+                <span>0.03812 sBTC principal</span>
+                <span>+$3.12 earned this week</span>
+              </div>
             </div>
           </div>
         </div>
         <div className="iris-bento-bottom">
-          <div className="iris-card iris-card-row iris-reveal" {...tilt}>
+          <div className={`iris-card iris-card-row iris-reveal ${bentoFilter !== "all" && bentoFilter !== "cashout" ? "dimmed" : ""}`} {...tilt}>
             <span className="iris-ic"><Banknote size={18} /></span>
-            <div><span className="iris-tag">Cash out</span><h3 style={{ fontSize: 22, marginTop: 10 }}>Back to your bank.</h3><p style={{ margin: 0 }}>Local currency, stated timing, on your terms.</p></div>
+            <div className="iris-card-row-copy">
+              <div className="iris-card-row-head">
+                <span className="iris-tag">Cash out</span>
+                <span className="iris-rail-pill">NGN · USD · BANK RAILS</span>
+              </div>
+              <h3>Back to your bank.</h3>
+              <p>Local currency settlement with stated timing and HMAC-verified quotes, on your terms.</p>
+            </div>
           </div>
-          <div className="iris-card iris-card-row iris-reveal" {...tilt}>
+          <div className={`iris-card iris-card-row iris-reveal ${bentoFilter !== "all" && bentoFilter !== "cashout" ? "dimmed" : ""}`} {...tilt}>
             <span className="iris-ic"><ShieldCheck size={18} /></span>
-            <div><span className="iris-tag">Foundation</span><h3 style={{ fontSize: 22, marginTop: 10 }}>Built on Bitcoin.</h3><p style={{ margin: 0 }}>Powered by Stacks · sBTC · visible status, always.</p></div>
+            <div className="iris-card-row-copy">
+              <div className="iris-card-row-head">
+                <span className="iris-tag">Foundation</span>
+                <span className="iris-rail-pill">STACKS L2 · sBTC · SIP-010</span>
+              </div>
+              <h3>Built on Bitcoin.</h3>
+              <p>Non-custodial Clarity smart contracts with gasless sponsored co-signing and visible status.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -1012,7 +1144,10 @@ export default function Home() {
             return (
               <div className={open ? "iris-acc-item open" : "iris-acc-item"} key={f.q}>
                 <button className="iris-acc-btn" aria-expanded={open} onClick={() => setOpenFaq(open ? null : i)}>
-                  {f.q}
+                  <span className="iris-acc-q">
+                    <em className="iris-acc-num">0{i + 1}</em>
+                    <span>{f.q}</span>
+                  </span>
                   <span className="iris-plus"><Plus size={15} /></span>
                 </button>
                 <div className="iris-acc-panel"><p>{f.a}</p></div>
