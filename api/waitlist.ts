@@ -120,24 +120,25 @@ export default async function handler(req: Request, res: Response) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "Email service is not configured yet." });
 
-  // 1. Team notification — must land, otherwise the signup is lost.
-  const ownerSent = await sendEmail(apiKey, {
-    to: [OWNER_EMAIL],
-    reply_to: email,
-    subject: `New Sato ${audience} waitlist signup`,
-    text: `New Sato waitlist signup\n\nAudience: ${audience}\nEmail: ${email}\nSource: satoxbt.com`,
-    html: ownerHtml(email, audience),
-  });
+  // Send team notification and user confirmation in parallel to halve response latency.
+  // Team notification must succeed; user confirmation remains best-effort.
+  const [ownerSent, userSent] = await Promise.all([
+    sendEmail(apiKey, {
+      to: [OWNER_EMAIL],
+      reply_to: email,
+      subject: `New Sato ${audience} waitlist signup`,
+      text: `New Sato waitlist signup\n\nAudience: ${audience}\nEmail: ${email}\nSource: satoxbt.com`,
+      html: ownerHtml(email, audience),
+    }),
+    sendEmail(apiKey, {
+      to: [email],
+      reply_to: OWNER_EMAIL,
+      subject: "You're on the Sato waitlist",
+      text: `You're on the Sato waitlist.\n\nSato is Bitcoin money that feels human — send to @usernames, earn on your balance, and cash out to local currency.\n\n${audience === "businesses" ? "We'll reach out with business onboarding and regional availability first." : "We'll email you the moment your invite is ready in your region."}\n\nOne useful email. No noise. Just reply to this email if you need anything.`,
+      html: userHtml(audience),
+    }),
+  ]);
   if (!ownerSent) return res.status(502).json({ error: "Resend could not accept the signup yet." });
-
-  // 2. User confirmation — best-effort. Never fails the signup.
-  const userSent = await sendEmail(apiKey, {
-    to: [email],
-    reply_to: OWNER_EMAIL,
-    subject: "You're on the Sato waitlist",
-    text: `You're on the Sato waitlist.\n\nSato is Bitcoin money that feels human — send to @usernames, earn on your balance, and cash out to local currency.\n\n${audience === "businesses" ? "We'll reach out with business onboarding and regional availability first." : "We'll email you the moment your invite is ready in your region."}\n\nOne useful email. No noise. Just reply to this email if you need anything.`,
-    html: userHtml(audience),
-  });
   if (!userSent) console.error(`waitlist confirmation failed for ${email}`);
 
   return res.status(200).json({ ok: true });

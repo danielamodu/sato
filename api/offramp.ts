@@ -105,9 +105,15 @@ export function offrampAuthMessage(args: {
 
 // --- live rate -----------------------------------------------------------
 
-// BTC/NGN spot from CoinGecko (server-side, no key). Throws on any bad read so
-// we never quote off an invented rate.
+// BTC/NGN spot from CoinGecko (server-side, no key) with a 30s TTL cache so
+// debounced cash-out typing doesn't hit CoinGecko on every keystroke.
+let cachedBtcNgn: { rate: number; expiresAt: number } | null = null;
+const RATE_CACHE_TTL_MS = 30_000;
+
 async function btcNgn(): Promise<number> {
+  if (cachedBtcNgn && cachedBtcNgn.expiresAt > Date.now()) {
+    return cachedBtcNgn.rate;
+  }
   const r = await fetch(
     "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=ngn"
   );
@@ -115,6 +121,7 @@ async function btcNgn(): Promise<number> {
   const d = (await r.json()) as { bitcoin?: { ngn?: number } };
   const v = d?.bitcoin?.ngn;
   if (typeof v !== "number" || v <= 0) throw new Error("rate unavailable");
+  cachedBtcNgn = { rate: v, expiresAt: Date.now() + RATE_CACHE_TTL_MS };
   return v;
 }
 

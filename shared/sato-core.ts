@@ -125,20 +125,55 @@ export function classifySatoCall(
 export function createSatoReader(config: SatoConfig) {
   const { deployer, network, apiUrl, contracts } = config;
 
+  // Deduplicate concurrent identical read-only calls and cache contract-level
+  // constants (rates, caps, windows) for 5 minutes to avoid Hiro rate limits.
+  const inflight = new Map<string, Promise<ClarityValue>>();
+  const constCache = new Map<string, { value: ClarityValue; expiresAt: number }>();
+  const CONST_TTL_MS = 5 * 60 * 1000;
+  const CONST_FNS = new Set([
+    "get-base-rate",
+    "get-boost-rate",
+    "get-per-user-cap",
+    "get-window-length",
+  ]);
+
   async function readOnly(
     contract: ContractRef,
     functionName: string,
     functionArgs: ClarityValue[],
     senderAddress: string
   ) {
-    return fetchCallReadOnlyFunction({
+    const isConst = functionArgs.length === 0 && CONST_FNS.has(functionName);
+    const key = `${contract.address}.${contract.name}::${functionName}::${
+      isConst ? "const" : JSON.stringify(functionArgs)
+    }`;
+    if (isConst) {
+      const hit = constCache.get(key);
+      if (hit && hit.expiresAt > Date.now()) return hit.value;
+    }
+    const active = inflight.get(key);
+    if (active) return active;
+
+    const req = fetchCallReadOnlyFunction({
       contractAddress: contract.address,
       contractName: contract.name,
       functionName,
       functionArgs,
       senderAddress,
       network,
-    });
+    })
+      .then((cv) => {
+        if (isConst) {
+          constCache.set(key, { value: cv, expiresAt: Date.now() + CONST_TTL_MS });
+        }
+        return cv;
+      })
+      .finally(() => {
+        inflight.delete(key);
+      });
+
+    inflight.set(key, req);
+    return req;
   }
 
   async function resolveName(name: string): Promise<string | null> {

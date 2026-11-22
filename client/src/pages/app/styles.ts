@@ -16,11 +16,11 @@ export const shellStyles = `
 .pass-title{font-size:clamp(44px,min(11vw,9svh),88px);line-height:.96;letter-spacing:-.055em;font-weight:800;margin:0;}
 .pass-lede{color:var(--text-muted);font-size:15px;margin:14px 0 0;}
 .pass-aurora{position:absolute;inset:0;overflow:hidden;pointer-events:none;}
-.pa{position:absolute;border-radius:50%;filter:blur(90px);}
-.pa.a1{width:55vmax;height:55vmax;background:rgba(246,195,154,.4);top:-18vmax;right:-14vmax;animation:pa-drift 26s ease-in-out infinite alternate;}
-.pa.a2{width:50vmax;height:50vmax;background:rgba(185,205,242,.4);bottom:-20vmax;left:-16vmax;animation:pa-drift 32s ease-in-out infinite alternate-reverse;}
+.pa{position:absolute;border-radius:50%;will-change:transform;}
+.pa.a1{width:55vmax;height:55vmax;background:radial-gradient(circle,rgba(246,195,154,.44) 0%,rgba(246,195,154,.18) 42%,rgba(246,195,154,0) 70%);top:-18vmax;right:-14vmax;animation:pa-drift 26s ease-in-out infinite alternate;}
+.pa.a2{width:50vmax;height:50vmax;background:radial-gradient(circle,rgba(185,205,242,.44) 0%,rgba(185,205,242,.18) 42%,rgba(185,205,242,0) 70%);bottom:-20vmax;left:-16vmax;animation:pa-drift 32s ease-in-out infinite alternate-reverse;}
 @keyframes pa-drift{from{translate:-6vmax 2vmax;}to{translate:6vmax -3vmax;}}
-.pass-noise{position:absolute;inset:0;pointer-events:none;opacity:.05;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"/></filter><rect width="160" height="160" filter="url(%23n)" opacity="0.6"/></svg>');}
+.pass-noise{position:absolute;inset:0;pointer-events:none;opacity:.04;background-image:radial-gradient(rgba(13,17,23,.22) .5px,transparent .5px);background-size:6px 6px;}
 .pass-nav,.pass-main,.pass-foot{position:relative;z-index:1;}
 .pass-tilt{margin-top:30px;width:min(100%,380px);perspective:1200px;cursor:grab;touch-action:none;}
 .pass-tilt:active{cursor:grabbing;}
@@ -49,16 +49,16 @@ export const shellStyles = `
 .pass-micro2{font-size:12.5px;font-weight:600;color:var(--muted);margin:14px 0 0;}
 .pass-foot{flex:0 0 auto;text-align:center;font-size:11.5px;color:var(--muted);padding:0 20px 20px;}
 .sky-line{display:block;overflow:hidden;padding-bottom:.09em;margin-bottom:-.09em;}
-.sky-line>span{display:block;animation:sky-rise .9s var(--ease) both;}
-.sky-line:nth-child(2)>span{animation-delay:.1s;}
-@keyframes sky-rise{from{transform:translateY(112%);}}
+.sky-line>span{display:block;animation:sky-rise .35s var(--ease) both;}
+.sky-line:nth-child(2)>span{animation-delay:.04s;}
+@keyframes sky-rise{from{transform:translateY(14%);}}
 
 /* Brand panel */
 
 /* ---- sky: the landing hero, carried into the app ---- */
 .sky{position:absolute;top:0;left:0;right:0;height:660px;z-index:0;overflow:hidden;pointer-events:none;background:linear-gradient(180deg,#5d8fd6 0%,#7ba9e3 26%,#a9c9f0 52%,#d9e9fb 76%,#f5f4ef 100%);}
-.cloud{position:absolute;background:transparent;filter:blur(14px);opacity:.85;}
-.cloud::before,.cloud::after{content:"";position:absolute;background:#fff;border-radius:999px;}
+.cloud{position:absolute;background:transparent;opacity:.85;will-change:transform;}
+.cloud::before,.cloud::after{content:"";position:absolute;background:radial-gradient(50% 50% at 50% 50%,rgba(255,255,255,.78) 0%,rgba(255,255,255,.35) 55%,rgba(255,255,255,0) 100%);border-radius:999px;}
 .cloud::before{inset:0;}
 .cloud::after{left:22%;top:-34%;width:44%;height:120%;}
 .cloud.c1{width:340px;height:70px;top:6%;right:38%;animation:cloud-drift 26s ease-in-out infinite alternate;}

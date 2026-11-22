@@ -28,11 +28,16 @@ export function ReceiveView(props: {
 
   const qrWrapRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
+  const [mountHighResQr, setMountHighResQr] = useState(false);
 
   // Rasterize a shareable "pay me" card to PNG and download it. Pure canvas —
   // no extra dependency, and nothing taints the export (logo + QR are
   // same-origin). Dark card keeps black primary; orange stays a tiny accent.
   const downloadCard = async () => {
+    if (!mountHighResQr) {
+      setMountHighResQr(true);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
     const src = qrWrapRef.current?.querySelector("canvas");
     if (!src) return;
     setSaving(true);
@@ -151,32 +156,34 @@ export function ReceiveView(props: {
 
   return (
     <>
-      {/* Offscreen high-res QR, rasterized into the downloadable card. */}
-      <div
-        ref={qrWrapRef}
-        aria-hidden
-        style={{
-          position: "absolute",
-          left: -99999,
-          top: 0,
-          pointerEvents: "none",
-        }}
-      >
-        <QRCodeCanvas
-          value={payLink}
-          size={520}
-          level="H"
-          bgColor="#ffffff"
-          fgColor="#0d1117"
-          marginSize={0}
-          imageSettings={{
-            src: "/assets/sato-logo.png",
-            height: 104,
-            width: 104,
-            excavate: true,
+      {/* Offscreen high-res QR, mounted on demand when downloading the card. */}
+      {mountHighResQr && (
+        <div
+          ref={qrWrapRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: -99999,
+            top: 0,
+            pointerEvents: "none",
           }}
-        />
-      </div>
+        >
+          <QRCodeCanvas
+            value={payLink}
+            size={520}
+            level="H"
+            bgColor="#ffffff"
+            fgColor="#0d1117"
+            marginSize={0}
+            imageSettings={{
+              src: "/assets/sato-logo.png",
+              height: 104,
+              width: 104,
+              excavate: true,
+            }}
+          />
+        </div>
+      )}
       <header className="page-head">
         <div>
           <span className="page-kicker">Payments</span>

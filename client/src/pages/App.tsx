@@ -2,8 +2,9 @@
 //
 // Individual tab views and shared dashboard components live under ./app/*.
 
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
 import {
   ArrowUpRight,
   Fuel,
@@ -25,7 +26,6 @@ import {
   earnLock,
   fundEarn,
   fundSelf,
-  getBalance,
   getBalanceHistory,
   getEarnStats,
   getName,
@@ -46,14 +46,15 @@ import {
 } from "@/lib/sato";
 import { explorerTx, fetchPrices, fmt, short, txidOf, type View } from "./app/helpers";
 import { Overview } from "./app/Overview";
-import { SendView } from "./app/SendView";
-import { ReceiveView } from "./app/ReceiveView";
-import { BillsView } from "./app/BillsView";
-import { SendBankView } from "./app/SendBankView";
-import { EarnView } from "./app/EarnView";
-import { GasView } from "./app/GasView";
-import { ActivityView } from "./app/ActivityView";
 import { shellStyles } from "./app/styles";
+
+const SendView = lazy(() => import("./app/SendView").then((m) => ({ default: m.SendView })));
+const ReceiveView = lazy(() => import("./app/ReceiveView").then((m) => ({ default: m.ReceiveView })));
+const BillsView = lazy(() => import("./app/BillsView").then((m) => ({ default: m.BillsView })));
+const SendBankView = lazy(() => import("./app/SendBankView").then((m) => ({ default: m.SendBankView })));
+const EarnView = lazy(() => import("./app/EarnView").then((m) => ({ default: m.EarnView })));
+const GasView = lazy(() => import("./app/GasView").then((m) => ({ default: m.GasView })));
+const ActivityView = lazy(() => import("./app/ActivityView").then((m) => ({ default: m.ActivityView })));
 
 function SatoApp() {
   const { address, isConnecting, connectWallet, disconnectWallet } = useStacks();
@@ -107,27 +108,26 @@ function SatoApp() {
   // Pay bills (airtime/data/electricity/cable) owns its own state inside
   // BillsView — it only needs balance + rate from here.
 
-  // Refresh the connected user's name + balance + earn position, then activity.
+  // Refresh the connected user's name + balance + earn position + activity in parallel
+  // (no sequential waterfall, and reuses e.liquid instead of fetching get-balance twice).
   const refresh = async (addr: string) => {
+    setTxLoading(true);
     try {
-      const [n, b, e, s, hist] = await Promise.all([
+      const [n, e, s, hist, recentTxs] = await Promise.all([
         getName(addr),
-        getBalance(addr),
         getEarnStats(addr),
         getSponsorStats(addr),
         getBalanceHistory(addr),
+        getRecentTransactions(addr, 25),
       ]);
       setMyName(n);
-      setBalance(b);
+      setBalance(e.liquid);
       setEarn(e);
       setSponsor(s);
       setEvents(hist.events);
+      setTxs(recentTxs);
     } catch (e) {
       console.error("refresh failed", e);
-    }
-    setTxLoading(true);
-    try {
-      setTxs(await getRecentTransactions(addr, 25));
     } finally {
       setTxLoading(false);
       setHydrated(true);
@@ -248,10 +248,11 @@ function SatoApp() {
     }
   }, [address]);
 
-  // Live BTC + STX prices for the USD figures across the app. Refreshes on a
-  // slow interval; a failed fetch leaves them null so amounts fall back to
-  // their native unit rather than show a fake number.
+  // Live BTC + STX prices for the USD figures across the connected app.
+  // Only polls once a wallet is connected so disconnected visitors don't pay
+  // an unnecessary third-party network call on mount.
   useEffect(() => {
+    if (!address) return;
     let alive = true;
     const load = () =>
       fetchPrices().then((p) => {
@@ -265,7 +266,7 @@ function SatoApp() {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [address]);
 
   // While the Earn tab is open, re-read the ledger position on a short interval
   // so the live-yield ticker re-syncs to the chain and the figures stay current.
@@ -564,7 +565,7 @@ function SatoApp() {
         <header className="pass-nav">
           <span className="auth-brand">
             <span className="brand-mark">
-              <img src="/assets/sato-logo.png" alt="Sato" />
+              <img src="/assets/sato-logo.png" alt="Sato" width={30} height={30} fetchPriority="high" decoding="async" />
             </span>
             <span className="brand-name">sato</span>
           </span>
@@ -731,7 +732,7 @@ function SatoApp() {
       <header className="appnav" aria-label="Primary">
         <a className="appnav-brand" href="/" title="Sato home">
           <span className="appnav-mark">
-            <img src="/assets/sato-logo.png" alt="" />
+            <img src="/assets/sato-logo.png" alt="" width={32} height={32} decoding="async" />
           </span>
           <strong>sato</strong>
         </a>
@@ -798,6 +799,7 @@ function SatoApp() {
       {/* Main column */}
       <main className="main">
         <div className="view" key={view}>
+        <Suspense fallback={null}>
         {view === "overview" && (
           <Overview
             balance={balance}
@@ -898,6 +900,7 @@ function SatoApp() {
             reload={() => refresh(address)}
           />
         )}
+        </Suspense>
         </div>
       </main>
 
@@ -923,6 +926,7 @@ export default function App() {
   usePageMeta("Your wallet · Sato", "Send, earn, and cash out sBTC from your Sato wallet.");
   return (
     <StacksProvider>
+      <Toaster />
       <SatoApp />
     </StacksProvider>
   );

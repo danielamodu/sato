@@ -131,9 +131,15 @@ export function payAuthMessage(args: {
 
 // --- live rate -----------------------------------------------------------
 
-// BTC/NGN spot from CoinGecko (server-side, no key). Throws on any bad read so
-// we never quote off an invented rate.
+// BTC/NGN spot from CoinGecko (server-side, no key) with a 30s TTL cache to
+// avoid upstream rate-limiting and latency on debounced quote typing.
+let cachedBtcNgn: { rate: number; expiresAt: number } | null = null;
+const RATE_CACHE_TTL_MS = 30_000;
+
 async function btcNgn(): Promise<number> {
+  if (cachedBtcNgn && cachedBtcNgn.expiresAt > Date.now()) {
+    return cachedBtcNgn.rate;
+  }
   const r = await fetch(
     "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=ngn"
   );
@@ -141,6 +147,7 @@ async function btcNgn(): Promise<number> {
   const d = (await r.json()) as { bitcoin?: { ngn?: number } };
   const v = d?.bitcoin?.ngn;
   if (typeof v !== "number" || v <= 0) throw new Error("rate unavailable");
+  cachedBtcNgn = { rate: v, expiresAt: Date.now() + RATE_CACHE_TTL_MS };
   return v;
 }
 
@@ -240,10 +247,16 @@ interface Variation {
 // A product's plans/bouquets (data bundles, TV packages). VTPass nests these
 // under content.variations (some older endpoints spell it "varations" — accept
 // both). Drops any malformed row so the client only sees usable options.
+// Cached for 5 minutes per serviceID so plan selection + quoting doesn't re-fetch VTPass.
+const variationsCache = new Map<string, { list: Variation[]; expiresAt: number }>();
+const VARIATIONS_TTL_MS = 5 * 60 * 1000;
+
 async function fetchVariations(vtServiceID: string): Promise<Variation[]> {
+  const hit = variationsCache.get(vtServiceID);
+  if (hit && hit.expiresAt > Date.now()) return hit.list;
   const res = await vtGet(`service-variations?serviceID=${encodeURIComponent(vtServiceID)}`);
   const arr: any[] = res?.content?.variations || res?.content?.varations || [];
-  return arr
+  const list = arr
     .map((v) => ({
       variation_code: String(v?.variation_code ?? ""),
       name: String(v?.name ?? ""),
@@ -251,6 +264,10 @@ async function fetchVariations(vtServiceID: string): Promise<Variation[]> {
       fixedPrice: String(v?.fixedPrice ?? "").toLowerCase() === "yes",
     }))
     .filter((v) => v.variation_code && v.amount > 0);
+  if (list.length > 0) {
+    variationsCache.set(vtServiceID, { list, expiresAt: Date.now() + VARIATIONS_TTL_MS });
+  }
+  return list;
 }
 
 // The naira price of one plan — used to price data/cable quotes server-side so
@@ -351,13 +368,21 @@ export default async function handler(req: Request, res: Response) {
     if (!vt) return;
 
     let amountNgn: number;
+    let rate: number;
     if (FIXED_PRICE.has(service)) {
       if (!variation) return res.status(400).json({ error: "Pick a plan first." });
       let priced: number | null;
       try {
-        priced = await variationAmount(vt, variation);
-      } catch {
-        return res.status(502).json({ error: "Couldn't load plans — try again." });
+        // Fetch plan price and BTC/NGN spot rate in parallel instead of sequentially.
+        [priced, rate] = await Promise.all([
+          variationAmount(vt, variation),
+          btcNgn(),
+        ]);
+      } catch (err: any) {
+        const msg = err?.message === "rate unavailable"
+          ? "Live rate unavailable — try again."
+          : "Couldn't load plans — try again.";
+        return res.status(502).json({ error: msg });
       }
       if (priced == null) return res.status(400).json({ error: "That plan isn't available." });
       if (priced < MIN_NGN || priced > MAX_FIXED_NGN)
@@ -369,13 +394,11 @@ export default async function handler(req: Request, res: Response) {
         return res.status(400).json({ error: `Enter ₦${MIN_NGN}–₦${MAX_NGN.toLocaleString()}.` });
       if (service === "electricity" && variation !== "prepaid" && variation !== "postpaid")
         return res.status(400).json({ error: "Choose prepaid or postpaid." });
-    }
-
-    let rate: number;
-    try {
-      rate = await btcNgn();
-    } catch {
-      return res.status(502).json({ error: "Live rate unavailable — try again." });
+      try {
+        rate = await btcNgn();
+      } catch {
+        return res.status(502).json({ error: "Live rate unavailable — try again." });
+      }
     }
     const q: Quote = {
       service,
