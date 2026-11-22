@@ -5,7 +5,6 @@
 // @stacks/connect's `request("stx_callContract")`.
 
 import { Cl, type ClarityValue } from "@stacks/transactions";
-import { request } from "@stacks/connect";
 import {
   createSatoReader,
   YIELD_BLOCKS_PER_YEAR,
@@ -15,6 +14,11 @@ import {
   type SponsorStats,
   type TxState,
 } from "@shared/sato-core";
+
+async function connectRequest(method: string, params: Record<string, unknown>) {
+  const { request } = await import("@stacks/connect");
+  return (request as any)(method, params);
+}
 
 export {
   YIELD_BLOCKS_PER_YEAR,
@@ -71,7 +75,7 @@ async function callContract(
   functionName: string,
   functionArgs: ClarityValue[]
 ) {
-  return request("stx_callContract", {
+  return connectRequest("stx_callContract", {
     contract: `${contract.address}.${contract.name}`,
     functionName,
     functionArgs,
@@ -113,7 +117,7 @@ async function sponsoredCall(
   functionName: string,
   functionArgs: ClarityValue[]
 ): Promise<string> {
-  const res = await request("stx_callContract", {
+  const res = await connectRequest("stx_callContract", {
     contract: `${contract.address}.${contract.name}`,
     functionName,
     functionArgs,
@@ -151,7 +155,7 @@ export function sendSbtcSponsored(recipient: string, amount: bigint) {
 // Ask the connected wallet to sign a plain-text authorization message (used to
 // prove ownership of a treasury payment before bill/offramp fulfillment).
 export async function signAuthMessage(message: string): Promise<string> {
-  const res = await request("stx_signMessage", { message });
+  const res = await connectRequest("stx_signMessage", { message });
   const sig = (res as { signature?: string })?.signature;
   if (!sig) throw new Error("Wallet did not return a signature.");
   return sig;

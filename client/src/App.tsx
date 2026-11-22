@@ -1,51 +1,50 @@
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import Businesses from "@/pages/Businesses";
-import People from "@/pages/People";
+import { lazy, Suspense } from "react";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
-import SatoApp from "./pages/App";
-import Privacy from "./pages/Privacy";
-import Security from "./pages/Security";
-import Terms from "./pages/Terms";
 
+// Eagerly kick off the /app chunk fetch when the entry URL is /app (or testnet subdomain)
+// to eliminate the React mount -> lazy chunk request waterfall, while keeping /app
+// 100% excluded from landing page (/) loads.
+const isAppEntry =
+  typeof window !== "undefined" &&
+  (window.location.pathname.startsWith("/app") ||
+    window.location.hostname.startsWith("testnet."));
+const appChunkPromise = isAppEntry ? import("./pages/App") : null;
+
+const SatoApp = lazy(() => appChunkPromise ?? import("./pages/App"));
+const People = lazy(() => import("@/pages/People"));
+const Businesses = lazy(() => import("@/pages/Businesses"));
+const Security = lazy(() => import("./pages/Security"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
 
 function Router() {
   return (
-    <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/app"} component={SatoApp} />
-      <Route path={"/people"} component={People} />
-      <Route path={"/businesses"} component={Businesses} />
-      <Route path={"/security"} component={Security} />
-      <Route path={"/privacy"} component={Privacy} />
-      <Route path={"/terms"} component={Terms} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={null}>
+      <Switch>
+        <Route path={"/"} component={Home} />
+        <Route path={"/app"} component={SatoApp} />
+        <Route path={"/people"} component={People} />
+        <Route path={"/businesses"} component={Businesses} />
+        <Route path={"/security"} component={Security} />
+        <Route path={"/privacy"} component={Privacy} />
+        <Route path={"/terms"} component={Terms} />
+        <Route path={"/404"} component={NotFound} />
+        {/* Final fallback route */}
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
-
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+      <ThemeProvider defaultTheme="light">
+        <Router />
       </ThemeProvider>
     </ErrorBoundary>
   );

@@ -10,12 +10,6 @@ import React, {
   useEffect,
   useState,
 } from "react";
-import {
-  connect,
-  disconnect as connectDisconnect,
-  isConnected,
-  getLocalStorage,
-} from "@stacks/connect";
 
 interface StacksContextType {
   address: string | null;
@@ -26,41 +20,57 @@ interface StacksContextType {
 
 const StacksContext = createContext<StacksContextType | undefined>(undefined);
 
-// Pull the first STX address out of connect's local-storage shape.
-function readStoredAddress(): string | null {
-  try {
-    const data = getLocalStorage();
-    return data?.addresses?.stx?.[0]?.address ?? null;
-  } catch {
-    return null;
+let connectModPromise: Promise<typeof import("@stacks/connect")> | null = null;
+function loadConnect() {
+  if (!connectModPromise) {
+    connectModPromise = import("@stacks/connect");
   }
+  return connectModPromise;
 }
 
 export function StacksProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  // Restore a previous session on mount.
+  // Restore a previous session after initial paint without blocking first render.
   useEffect(() => {
-    if (isConnected()) {
-      setAddress(readStoredAddress());
+    let alive = true;
+    try {
+      if (typeof localStorage === "undefined" || localStorage.length === 0) {
+        return;
+      }
+    } catch {
+      return;
     }
+    loadConnect()
+      .then(({ isConnected, getLocalStorage }) => {
+        if (!alive || !isConnected()) return;
+        const data = getLocalStorage();
+        setAddress(data?.addresses?.stx?.[0]?.address ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const connectWallet = async () => {
     setIsConnecting(true);
     try {
+      const { connect, getLocalStorage } = await loadConnect();
       const result = await connect();
       // connect() returns the address list; fall back to storage.
       const stx = result?.addresses?.find((a) => a.address?.startsWith("S"));
-      setAddress(stx?.address ?? readStoredAddress());
+      setAddress(stx?.address ?? getLocalStorage()?.addresses?.stx?.[0]?.address ?? null);
     } finally {
       setIsConnecting(false);
     }
   };
 
   const disconnectWallet = () => {
-    connectDisconnect();
+    loadConnect()
+      .then(({ disconnect }) => disconnect())
+      .catch(() => {});
     setAddress(null);
   };
 
