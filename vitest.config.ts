@@ -12,6 +12,7 @@ import {
 
 export default defineConfig({
   test: {
+    include: ["tests/*.test.ts"],
     environment: "clarinet",
     pool: "forks",
     isolate: false,
