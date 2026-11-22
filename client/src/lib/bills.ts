@@ -8,7 +8,7 @@
 // keys live here. Fixed-price categories (data, cable) are priced from the
 // chosen plan; airtime/electricity from a naira amount. See api/pay.ts.
 
-import { sendSbtc, sendSbtcSponsored, NO_SPONSORED_TX } from "./sato";
+import { sendSbtc, sendSbtcSponsored, signAuthMessage, NO_SPONSORED_TX } from "./sato";
 
 const PAY_ENDPOINT = "/api/pay";
 
@@ -106,7 +106,8 @@ async function submit(
   quote: BillQuote,
   txid: string,
   phone: string,
-  billersCode?: string
+  billersCode: string | undefined,
+  payerSig: string
 ): Promise<BillResult> {
   const { httpStatus, data } = await post({
     action: "submit",
@@ -115,6 +116,7 @@ async function submit(
     txid,
     phone,
     billersCode,
+    payerSig,
   });
   // 202 = payment still confirming on-chain; normalise to our "pending".
   if (httpStatus === 202) return { status: "pending", detail: data?.error || "Confirming…" };
@@ -131,6 +133,18 @@ export async function payBill(
 ): Promise<BillResult> {
   onStage?.("paying");
   const txid = await payTreasury(quote);
+  const normTxid = txid.trim().replace(/^0x/i, "").toLowerCase();
+  const cleanPhone = phone.trim();
+  const cleanCode = (billersCode || "").trim();
+  const boundCode =
+    quote.service === "airtime"
+      ? ""
+      : quote.service === "data" && !cleanCode
+        ? cleanPhone
+        : cleanCode;
+  const payerSig = await signAuthMessage(
+    `sato:pay:${normTxid}:${quote.service}:${quote.serviceID}:${cleanPhone}:${boundCode}`
+  );
   onStage?.("confirming", txid);
   // Poll: the payment must mine before VTPass fulfills. Bounded so we never
   // hang; if it's still confirming when we give up, the order isn't lost —
@@ -138,7 +152,7 @@ export async function payBill(
   const deadline = Date.now() + 8 * 60 * 1000;
   let last: BillResult = { status: "pending" };
   while (Date.now() < deadline) {
-    const r = await submit(quote, txid, phone, billersCode);
+    const r = await submit(quote, normTxid, cleanPhone, cleanCode || undefined, payerSig);
     if (r.status === "pending") {
       last = r;
       await new Promise((res) => setTimeout(res, 6000));

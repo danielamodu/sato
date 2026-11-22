@@ -4,39 +4,91 @@
 // this device, so backup and wipe both matter.
 
 import React from "react";
-import { Alert, Linking, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import * as LocalAuthentication from "expo-local-authentication";
 import { Btn, Panel, Screen, PageHead, Tips } from "@/components/ui";
 import { useWallet } from "@/state/wallet-store";
-import { revealMnemonic, wipeWallet } from "@/lib/wallet";
-import { short, explorerAddr } from "@/lib/format";
+import { importWallet, revealMnemonic, wipeWallet } from "@/lib/wallet";
+import { explorerAddr } from "@/lib/format";
 import { C, R, S } from "@/theme";
 
-// Biometric/PIN gate before showing the seed. If the device has nothing
-// enrolled (common on testnet/dev), allow through rather than lock the user out.
+// Biometric/PIN gate before showing the seed. Fails closed if authentication
+// fails or errors; if no device lock is enrolled at all, asks for an explicit
+// confirmation rather than silently revealing the key.
 async function authGate(): Promise<boolean> {
   try {
     const hw = await LocalAuthentication.hasHardwareAsync();
     const enrolled = hw && (await LocalAuthentication.isEnrolledAsync());
-    if (!enrolled) return true;
-    const res = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Unlock to reveal your recovery phrase",
-    });
-    return res.success;
+    if (enrolled) {
+      const res = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Unlock to reveal your recovery phrase",
+        disableDeviceFallback: false,
+      });
+      return res.success;
+    }
   } catch {
-    return true;
+    return false;
   }
+
+  return new Promise((resolve) => {
+    Alert.alert(
+      "No device lock detected",
+      "Anyone looking at your screen can read your recovery phrase. Reveal it anyway?",
+      [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: "Reveal", style: "destructive", onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
 }
 
 export default function AccountScreen() {
   const w = useWallet();
   const [phrase, setPhrase] = React.useState<string | null>(null);
+  const [restoreInput, setRestoreInput] = React.useState("");
+  const [restoring, setRestoring] = React.useState(false);
 
   const onReveal = async () => {
     if (!(await authGate())) return;
     setPhrase(await revealMnemonic());
+  };
+
+  const onRestore = () => {
+    const normalized = restoreInput.trim().toLowerCase().replace(/\s+/g, " ");
+    const wordCount = normalized ? normalized.split(" ").length : 0;
+    if (wordCount !== 12 && wordCount !== 24) {
+      w.notify("Enter a valid 12- or 24-word recovery phrase", { tone: "err" });
+      return;
+    }
+    Alert.alert(
+      "Replace current wallet?",
+      "Importing a recovery phrase replaces the current key on this device. Make sure you've backed up your existing phrase first.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Restore",
+          style: "destructive",
+          onPress: async () => {
+            setRestoring(true);
+            try {
+              await importWallet(normalized);
+              setRestoreInput("");
+              setPhrase(null);
+              await w.reload();
+              w.notify("Wallet restored from recovery phrase", { tone: "ok" });
+              router.back();
+            } catch (e: any) {
+              w.notify(e?.message || "Invalid recovery phrase", { tone: "err" });
+            } finally {
+              setRestoring(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const onRemove = () => {
@@ -118,10 +170,36 @@ export default function AccountScreen() {
         )}
       </Panel>
 
+      <Panel>
+        <Text style={{ color: C.ink, fontSize: 16, fontWeight: "800" }}>Restore wallet</Text>
+        <Text style={{ color: C.textMuted, fontSize: 14, lineHeight: 20 }}>
+          Import an existing 12- or 24-word recovery phrase to replace the wallet on
+          this device.
+        </Text>
+        <TextInput
+          value={restoreInput}
+          onChangeText={setRestoreInput}
+          placeholder="word1 word2 word3 …"
+          placeholderTextColor={C.muted}
+          multiline
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={styles.restoreInput}
+        />
+        <Btn
+          label="Restore from phrase"
+          icon="refresh-cw"
+          variant="ghost"
+          loading={restoring}
+          disabled={!restoreInput.trim() || restoring}
+          onPress={onRestore}
+        />
+      </Panel>
+
       <Tips
         items={[
           "Sato is testnet-only for now. The faucet mints test sBTC with no real value.",
-          "Biometric unlock guards this screen when your device has it set up.",
+          "Biometric or device-PIN unlock guards your recovery phrase.",
         ]}
       />
 
@@ -157,4 +235,16 @@ const styles = StyleSheet.create({
   },
   chipNum: { color: C.muted, fontSize: 12, fontWeight: "700", width: 18 },
   chipWord: { color: C.ink, fontSize: 15, fontWeight: "700" },
+  restoreInput: {
+    backgroundColor: C.paper,
+    borderRadius: R.md,
+    borderWidth: 1,
+    borderColor: C.line,
+    color: C.ink,
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 76,
+    padding: S.md,
+    textAlignVertical: "top",
+  },
 });

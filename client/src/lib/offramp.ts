@@ -10,7 +10,7 @@
 // and returns "processing" but moves no real money (see api/offramp.ts). A live
 // offramp must be auth-gated + KYC/AML-checked before a payout key is wired in.
 
-import { sendSbtc, sendSbtcSponsored, NO_SPONSORED_TX } from "./sato";
+import { sendSbtc, sendSbtcSponsored, signAuthMessage, NO_SPONSORED_TX } from "./sato";
 
 const OFFRAMP_ENDPOINT = "/api/offramp";
 
@@ -93,7 +93,8 @@ async function submit(
   txid: string,
   bankCode: string,
   accountNumber: string,
-  accountName: string
+  accountName: string,
+  payerSig: string
 ): Promise<OfframpResult> {
   const { httpStatus, data } = await post({
     action: "submit",
@@ -103,6 +104,7 @@ async function submit(
     bankCode,
     accountNumber,
     accountName,
+    payerSig,
   });
   // 202 = payment still confirming on-chain; normalise to our "pending".
   if (httpStatus === 202) return { status: "pending", detail: data?.error || "Confirming…" };
@@ -120,13 +122,17 @@ export async function sendToBank(
 ): Promise<OfframpResult> {
   onStage?.("paying");
   const txid = await payTreasury(quote);
+  const normTxid = txid.trim().replace(/^0x/i, "").toLowerCase();
+  const payerSig = await signAuthMessage(
+    `sato:offramp:${normTxid}:${bankCode}:${accountNumber}`
+  );
   onStage?.("confirming", txid);
   // Poll: the payment must mine before the payout initiates. Bounded so we
   // never hang; re-submitting the same txid later is idempotent server-side.
   const deadline = Date.now() + 8 * 60 * 1000;
   let last: OfframpResult = { status: "pending" };
   while (Date.now() < deadline) {
-    const r = await submit(quote, txid, bankCode, accountNumber, accountName);
+    const r = await submit(quote, normTxid, bankCode, accountNumber, accountName, payerSig);
     if (r.status === "pending") {
       last = r;
       await new Promise((res) => setTimeout(res, 6000));

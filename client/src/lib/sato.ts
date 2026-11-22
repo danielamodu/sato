@@ -1,23 +1,29 @@
 // sato.ts — thin client for Sato's live testnet contracts.
 //
-// Wraps the contracts a user touches in the demo flow:
-//   - sato-names:    register-name, resolve-name, get-name, is-name-available
-//   - sato-yield-v3: the yield-bearing ledger — get-balance, send, deposit
-//                    (faucet). A held balance auto-earns the base rate with no
-//                    deposit step; lock/claim-lock opt sats into the higher
-//                    boost rate for a fixed term.
-//   - sato-sponsor:  top-up, get-sponsor-balance, get-remaining-allowance
-//
-// Reads hit the testnet API directly (no wallet needed). Writes go through
-// the connected wallet via @stacks/connect's `request("stx_callContract")`.
+// Reads and types are shared with mobile via `@shared/sato-core` so the two
+// clients cannot drift. Writes go through the connected web wallet via
+// @stacks/connect's `request("stx_callContract")`.
 
-import {
-  Cl,
-  cvToValue,
-  fetchCallReadOnlyFunction,
-  type ClarityValue,
-} from "@stacks/transactions";
+import { Cl, type ClarityValue } from "@stacks/transactions";
 import { request } from "@stacks/connect";
+import {
+  createSatoReader,
+  YIELD_BLOCKS_PER_YEAR,
+  type SatoTx,
+  type BalanceEvent,
+  type EarnStats,
+  type SponsorStats,
+  type TxState,
+} from "@shared/sato-core";
+
+export {
+  YIELD_BLOCKS_PER_YEAR,
+  type SatoTx,
+  type BalanceEvent,
+  type EarnStats,
+  type SponsorStats,
+  type TxState,
+};
 
 // Deployer of the live testnet contracts.
 export const DEPLOYER = "ST3Y94KSPM12SVR45DF7S9V4B0TGR7HCARM8SWYWV";
@@ -39,309 +45,24 @@ export const TREASURY = DEPLOYER;
 
 const API = "https://api.testnet.hiro.so";
 
+const reader = createSatoReader({
+  deployer: DEPLOYER,
+  network: NETWORK,
+  apiUrl: API,
+  contracts: CONTRACTS,
+});
+
 // --- reads (no wallet) ---------------------------------------------------
 
-async function readOnly(
-  contract: { address: string; name: string },
-  functionName: string,
-  functionArgs: ClarityValue[],
-  sender: string
-) {
-  return fetchCallReadOnlyFunction({
-    contractAddress: contract.address,
-    contractName: contract.name,
-    functionName,
-    functionArgs,
-    senderAddress: sender,
-    network: NETWORK,
-  });
-}
-
-// cvToValue unwraps an `(optional T)`: `none` -> null, but `(some T)` ->
-// a `{ type, value }` wrapper object (via cvToJSON), NOT the bare value.
-// This pulls the string out of either shape and rejects anything else,
-// so callers always get a clean `string | null` (never an object).
-function optionalString(val: unknown): string | null {
-  if (typeof val === "string") return val;
-  if (val && typeof val === "object" && "value" in val) {
-    const inner = (val as { value: unknown }).value;
-    return typeof inner === "string" ? inner : null;
-  }
-  return null;
-}
-
-// cvToValue on a Clarity `uint` yields a decimal string (a bare `(ok uint)`
-// or read-only `uint` in v7). Coerce whatever shape comes back to a bigint,
-// defaulting to 0n for anything unexpected so a balance read never throws.
-function toBigInt(val: unknown): bigint {
-  try {
-    if (typeof val === "bigint") return val;
-    if (typeof val === "number") return BigInt(val);
-    if (typeof val === "string" && val.trim() !== "") return BigInt(val);
-  } catch {
-    /* malformed number — fall through to the default */
-  }
-  return 0n;
-}
-
-// Resolve a @username to the principal that owns it (null if unregistered).
-export async function resolveName(name: string): Promise<string | null> {
-  const cv = await readOnly(
-    CONTRACTS.names,
-    "resolve-name",
-    [Cl.stringAscii(name)],
-    DEPLOYER
-  );
-  // returns (optional principal): some -> {type,value:principal}, none -> null
-  return optionalString(cvToValue(cv));
-}
-
-// Look up the username a principal has registered (null if none).
-export async function getName(owner: string): Promise<string | null> {
-  const cv = await readOnly(
-    CONTRACTS.names,
-    "get-name",
-    [Cl.principal(owner)],
-    owner
-  );
-  // returns (optional (string-ascii)): some -> {type,value:name}, none -> null
-  return optionalString(cvToValue(cv));
-}
-
-// Is a @username still unclaimed? Reads the registry live so the claim
-// form can confirm a handle before the user spends a transaction on it.
-export async function isNameAvailable(name: string): Promise<boolean> {
-  const cv = await readOnly(
-    CONTRACTS.names,
-    "is-name-available",
-    [Cl.stringAscii(name)],
-    DEPLOYER
-  );
-  return cvToValue(cv) === true; // read-only returns a bare bool
-}
-
-// Get a principal's live sBTC balance (in sats) from the yield-bearing ledger.
-// This is settled balance + pending base yield, so it ticks up every block.
-export async function getBalance(who: string): Promise<bigint> {
-  const cv = await readOnly(
-    CONTRACTS.ledger,
-    "get-balance",
-    [Cl.principal(who)],
-    who
-  );
-  return toBigInt(cvToValue(cv));
-}
-
-// A single on-chain action, normalized for the activity table.
-export interface SatoTx {
-  txId: string;
-  label: string; // human-readable action ("Sent sBTC", "Claimed username"…)
-  contract: string; // short contract name it touched
-  status: "success" | "pending" | "failed" | "abort";
-  time: number | null; // ms epoch, or null while pending
-}
-
-// Map a Sato contract-call to a friendly label.
-function labelFor(fn: string | undefined, contract: string): string {
-  if (contract === "sato-yield-v3") {
-    switch (fn) {
-      case "lock":
-        return "Locked for boost";
-      case "claim-lock":
-        return "Claimed lock";
-    }
-    // send / deposit fall through to the shared labels below.
-  }
-  if (contract === "sato-yield" || contract === "sato-yield-v2") {
-    switch (fn) {
-      case "deposit":
-        return "Deposited to Earn";
-      case "withdraw":
-        return "Withdrew from Earn";
-      case "fund-sbtc":
-        return "Added test sBTC";
-      case "fund-reserve":
-        return "Backed Earn reserve";
-      case "add-yield":
-        return "Yield distributed";
-    }
-  }
-  if (contract === "sato-sponsor") {
-    switch (fn) {
-      case "top-up":
-        return "Funded gas pool";
-      case "sponsor-tx":
-        return "Gas sponsored";
-    }
-  }
-  switch (fn) {
-    case "send":
-      return "Sent sBTC";
-    case "deposit":
-      return "Added test sBTC";
-    case "register-name":
-      return "Claimed username";
-    case "transfer-name":
-      return "Transferred username";
-    default:
-      return fn ? fn.replace(/-/g, " ") : contract;
-  }
-}
-
-// Pull the connected wallet's recent transactions straight from the Hiro
-// testnet API — real on-chain history, no wallet needed to read it.
-export async function getRecentTransactions(
-  who: string,
-  limit = 12
-): Promise<SatoTx[]> {
-  try {
-    const res = await fetch(
-      `${API}/extended/v1/address/${who}/transactions?limit=${limit}`
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    const rows: any[] = data?.results ?? [];
-    return rows
-      .filter((tx) => tx?.tx_type === "contract_call")
-      .map((tx) => {
-        const contractId: string = tx.contract_call?.contract_id ?? "";
-        const contract = contractId.split(".")[1] ?? contractId;
-        const statusRaw: string = tx.tx_status ?? "";
-        const status: SatoTx["status"] = statusRaw.startsWith("success")
-          ? "success"
-          : statusRaw === "pending"
-            ? "pending"
-            : statusRaw.includes("abort")
-              ? "abort"
-              : "failed";
-        const iso = tx.burn_block_time_iso ?? tx.parent_burn_block_time_iso;
-        return {
-          txId: tx.tx_id,
-          label: labelFor(tx.contract_call?.function_name, contract),
-          contract,
-          status,
-          time: iso ? new Date(iso).getTime() : null,
-        };
-      });
-  } catch {
-    return [];
-  }
-}
-
-// Poll one transaction's on-chain status by id — this drives the live
-// submitted → confirming → confirmed feedback in the app. `anchored` is false
-// while a tx is mined into a microblock but not yet an anchor block, so the
-// caller can show a distinct "confirming" state. Never throws: a not-yet-
-// indexed (404) or rate-limited read comes back as pending/unknown so the
-// caller simply keeps polling instead of flashing a failure.
-export type TxState = "pending" | "success" | "failed" | "unknown";
-export async function getTxStatus(
-  txid: string
-): Promise<{ state: TxState; anchored: boolean; reason?: string }> {
-  const id = txid.startsWith("0x") ? txid : `0x${txid}`;
-  try {
-    const res = await fetch(`${API}/extended/v1/tx/${id}`);
-    if (res.status === 404) return { state: "pending", anchored: false };
-    if (!res.ok) return { state: "unknown", anchored: false };
-    const tx = await res.json();
-    const raw: string = tx?.tx_status ?? "";
-    // Anchored unless the API explicitly flags it as microblock-only, so a
-    // missing field (Nakamoto testnet has no microblocks) reads as confirmed.
-    const anchored = tx?.is_unanchored !== true;
-    if (raw.startsWith("success")) return { state: "success", anchored };
-    if (raw === "pending") return { state: "pending", anchored: false };
-    if (raw.includes("abort"))
-      return {
-        state: "failed",
-        anchored: false,
-        reason:
-          raw === "abort_by_post_condition"
-            ? "Blocked by a post-condition"
-            : "Reverted on-chain",
-      };
-    return { state: "unknown", anchored: false };
-  } catch {
-    return { state: "unknown", anchored: false };
-  }
-}
-
-// One balance-affecting event on the connected wallet's ledger, reconstructed
-// from the contract's on-chain `print` events. Positive delta = credited (a
-// faucet top-up or an incoming payment), negative = debited (an outgoing send).
-// Auto-yield and lock/claim also move the balance but aren't `sbtc-*` events, so
-// the staircase tracks the explicit credits/debits and the caller anchors it to
-// the live (yield-inclusive) balance.
-export interface BalanceEvent {
-  time: number; // ms epoch of the confirming block
-  delta: bigint; // sats added (+) or removed (−)
-  kind: "deposit" | "received" | "sent";
-  peer: string | null; // the other party, for sent/received
-  txId: string;
-}
-
-// Reconstruct the wallet's real balance history — every credit AND debit, in
-// both directions — straight from the chain. The ledger emits `print` events
-// (not SIP-010 transfers), so an address's tx feed misses payments it only
-// *received*; instead we read the contract's own event log, which records
-// every `sbtc-mint`/`sbtc-transfer`, then join block times in one batch call.
-// Anchored to the live balance by the caller, this is a true, honest timeline.
-export async function getBalanceHistory(
-  who: string,
-  limit = 50
-): Promise<{ events: BalanceEvent[]; complete: boolean }> {
-  try {
-    const contract = `${CONTRACTS.ledger.address}.${CONTRACTS.ledger.name}`;
-    const res = await fetch(
-      `${API}/extended/v1/contract/${contract}/events?limit=${limit}`
-    );
-    if (!res.ok) return { events: [], complete: false };
-    const data = await res.json();
-    const rows: any[] = data?.results ?? [];
-    // Pull a field out of a Clarity print tuple repr, e.g.
-    // (tuple (amount u1000000) (event "sbtc-transfer") (recipient 'ST..) (sender 'ST..))
-    const field = (repr: string, re: RegExp): string =>
-      (repr.match(re) ?? [])[1] ?? "";
-    type Raw = { delta: bigint; kind: BalanceEvent["kind"]; peer: string | null; txId: string };
-    const raw: Raw[] = [];
-    for (const ev of rows) {
-      if (ev?.event_type !== "smart_contract_log") continue;
-      const repr: string = ev.contract_log?.value?.repr ?? "";
-      const kind = field(repr, /\(event "([^"]+)"\)/);
-      let amount = 0n;
-      try { amount = BigInt(field(repr, /\(amount u(\d+)\)/) || "0"); } catch { /* skip */ }
-      const recipient = field(repr, /\(recipient '([0-9A-Z]+)/);
-      const sender = field(repr, /\(sender '([0-9A-Z]+)/);
-      const txId: string = ev.tx_id;
-      if (amount <= 0n) continue;
-      if (kind === "sbtc-mint" && recipient === who)
-        raw.push({ delta: amount, kind: "deposit", peer: null, txId });
-      else if (kind === "sbtc-transfer" && recipient === who && sender !== who)
-        raw.push({ delta: amount, kind: "received", peer: sender || null, txId });
-      else if (kind === "sbtc-transfer" && sender === who)
-        raw.push({ delta: -amount, kind: "sent", peer: recipient || null, txId });
-    }
-    // Join confirming block times in one batched call, dropping anything not
-    // yet successfully mined, then order oldest→newest for the staircase.
-    const ids = [...new Set(raw.map((r) => r.txId))];
-    const tRes = await fetch(
-      `${API}/extended/v1/tx/multiple?${ids.map((id) => `tx_id=${id}`).join("&")}`
-    );
-    const tData: any = tRes.ok ? await tRes.json() : {};
-    const events: BalanceEvent[] = [];
-    for (const r of raw) {
-      const tx = tData?.[r.txId]?.result;
-      if (!tx || !String(tx.tx_status ?? "").startsWith("success")) continue;
-      const iso = tx.burn_block_time_iso ?? tx.parent_burn_block_time_iso;
-      const time = iso ? new Date(iso).getTime() : null;
-      if (!time) continue;
-      events.push({ time, delta: r.delta, kind: r.kind, peer: r.peer, txId: r.txId });
-    }
-    events.sort((a, b) => a.time - b.time);
-    return { events, complete: rows.length < limit };
-  } catch {
-    return { events: [], complete: false };
-  }
-}
+export const resolveName = reader.resolveName;
+export const getName = reader.getName;
+export const isNameAvailable = reader.isNameAvailable;
+export const getBalance = reader.getBalance;
+export const getRecentTransactions = reader.getRecentTransactions;
+export const getTxStatus = reader.getTxStatus;
+export const getBalanceHistory = reader.getBalanceHistory;
+export const getEarnStats = reader.getEarnStats;
+export const getSponsorStats = reader.getSponsorStats;
 
 // --- writes (wallet) -----------------------------------------------------
 
@@ -427,6 +148,15 @@ export function sendSbtcSponsored(recipient: string, amount: bigint) {
   ]);
 }
 
+// Ask the connected wallet to sign a plain-text authorization message (used to
+// prove ownership of a treasury payment before bill/offramp fulfillment).
+export async function signAuthMessage(message: string): Promise<string> {
+  const res = await request("stx_signMessage", { message });
+  const sig = (res as { signature?: string })?.signature;
+  if (!sig) throw new Error("Wallet did not return a signature.");
+  return sig;
+}
+
 // Devnet/testnet faucet: credit the caller's own balance so they have
 // something to send. Backed by the ledger's mint helper — and that balance
 // immediately starts earning the base rate.
@@ -435,65 +165,6 @@ export function fundSelf(amount: bigint) {
 }
 
 // --- earn (sato-yield-v3: auto-earning ledger + optional lock tier) -------
-
-// The user's earning picture on the v3 ledger. There is no separate pool: the
-// liquid balance auto-earns the base rate, and an optional lock moves sats into
-// the higher boost rate for a fixed term. All fields are sats except the
-// *RateBps fields (basis points of annual yield; 10000 bps = 100% APR).
-export interface EarnStats {
-  liquid: bigint; // spendable balance, auto-earning the base rate (live)
-  locked: bigint; // principal currently committed to the lock (boost) tier
-  lockValue: bigint; // locked principal + accrued boost yield, live
-  lockUnlock: bigint; // block height the lock matures (0 = no active lock)
-  height: bigint; // current chain tip, to count blocks until maturity
-  baseRateBps: bigint; // liquid (auto) rate in basis points
-  boostRateBps: bigint; // locked (boost) rate in basis points
-  totalSupply: bigint; // total liquid sBTC across all holders (context)
-}
-
-// Blocks the contract annualizes its rate over (mirrors BLOCKS_PER_YEAR in
-// sato-yield-v3). Lets the client project accrual between on-chain reads.
-export const YIELD_BLOCKS_PER_YEAR = 52560;
-
-// Read a user's full earning picture in one shot. Every read degrades to 0n if
-// the ledger isn't reachable, so the Earn tab still renders instead of throwing.
-// `get-lock` returns a {amount,height,unlock} tuple; we pull principal + unlock
-// from it. The chain tip (best-effort, from /v2/info) drives time-to-unlock.
-export async function getEarnStats(who: string): Promise<EarnStats> {
-  const readUint = async (fn: string, args: ClarityValue[]): Promise<bigint> => {
-    try { return toBigInt(cvToValue(await readOnly(CONTRACTS.ledger, fn, args, who))); }
-    catch { return 0n; }
-  };
-  // cvToValue may hand tuple fields back bare or wrapped as {type,value}; unwrap
-  // one level before coercing so we read the same on both shapes.
-  const field = (t: unknown, k: string): bigint => {
-    const f = (t as Record<string, unknown>)?.[k];
-    return toBigInt(f && typeof f === "object" && "value" in f ? (f as { value: unknown }).value : f);
-  };
-  const readLock = async (): Promise<{ amount: bigint; unlock: bigint }> => {
-    try {
-      const t = cvToValue(await readOnly(CONTRACTS.ledger, "get-lock", [Cl.principal(who)], who));
-      return { amount: field(t, "amount"), unlock: field(t, "unlock") };
-    } catch { return { amount: 0n, unlock: 0n }; }
-  };
-  const chainHeight = async (): Promise<bigint> => {
-    try {
-      const r = await fetch(`${API}/v2/info`);
-      return r.ok ? toBigInt((await r.json())?.stacks_tip_height) : 0n;
-    } catch { return 0n; }
-  };
-  const [liquid, lockValue, baseRateBps, boostRateBps, totalSupply, lock, height] =
-    await Promise.all([
-      readUint("get-balance", [Cl.principal(who)]),
-      readUint("get-lock-value", [Cl.principal(who)]),
-      readUint("get-base-rate", []),
-      readUint("get-boost-rate", []),
-      readUint("get-total-supply", []),
-      readLock(),
-      chainHeight(),
-    ]);
-  return { liquid, locked: lock.amount, lockValue, lockUnlock: lock.unlock, height, baseRateBps, boostRateBps, totalSupply };
-}
 
 // Lock sats from the liquid balance into the boost tier for `termBlocks`. The
 // locked sats leave the liquid balance (they stop earning the base rate and
@@ -518,49 +189,8 @@ export function fundEarn(amount: bigint) {
   return callContract(CONTRACTS.ledger, "deposit", [Cl.uint(amount)]);
 }
 
-// --- gas sponsorship (sato-sponsor pool) --------------------------------
-
-// The live state of the shared gas pool, plus this user's coverage.
-// All amounts are micro-STX (1 STX = 1,000,000 micro-STX).
-export interface SponsorStats {
-  poolBalance: bigint; // STX held in the pool, ready to reimburse fees
-  remaining: bigint; // still sponsorable for this user in the current window
-  cap: bigint; // per-user allowance per window
-  sponsoredCount: bigint; // lifetime txs sponsored for this user
-  windowLength: bigint; // length of a cap window, in blocks
-}
-
-// Read the whole sponsor picture for a user in one shot (five reads).
-export async function getSponsorStats(who: string): Promise<SponsorStats> {
-  const [poolBalance, remaining, cap, sponsoredCount, windowLength] =
-    await Promise.all([
-      readOnly(CONTRACTS.sponsor, "get-sponsor-balance", [], who),
-      readOnly(
-        CONTRACTS.sponsor,
-        "get-remaining-allowance",
-        [Cl.principal(who)],
-        who
-      ),
-      readOnly(CONTRACTS.sponsor, "get-per-user-cap", [], who),
-      readOnly(
-        CONTRACTS.sponsor,
-        "get-sponsored-count",
-        [Cl.principal(who)],
-        who
-      ),
-      readOnly(CONTRACTS.sponsor, "get-window-length", [], who),
-    ]);
-  return {
-    poolBalance: toBigInt(cvToValue(poolBalance)),
-    remaining: toBigInt(cvToValue(remaining)),
-    cap: toBigInt(cvToValue(cap)),
-    sponsoredCount: toBigInt(cvToValue(sponsoredCount)),
-    windowLength: toBigInt(cvToValue(windowLength)),
-  };
-}
-
 // Chip micro-STX into the shared gas pool. Permissionless — anyone can
 // help cover everyone's transaction fees.
-export function sponsorTopUp(amount: bigint) {
-  return callContract(CONTRACTS.sponsor, "top-up", [Cl.uint(amount)]);
+export function sponsorTopUp(microStx: bigint) {
+  return callContract(CONTRACTS.sponsor, "top-up", [Cl.uint(microStx)]);
 }

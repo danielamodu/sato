@@ -8,6 +8,7 @@
 // and no keys live here. See api/pay.ts for the server side.
 
 import { send } from "@/lib/sato";
+import { signAuthMessage } from "@/lib/wallet";
 import { PAY_ENDPOINT } from "@/config/network";
 
 export type Network = "mtn" | "glo" | "airtel" | "9mobile";
@@ -56,8 +57,20 @@ async function payTreasury(quote: BillQuote): Promise<string> {
 }
 
 // Submit a paid order for fulfillment. `txid` is the sBTC payment to treasury.
-async function submit(quote: BillQuote, txid: string, phone: string): Promise<BillResult> {
-  const { httpStatus, data } = await post({ action: "submit", quote, sig: quote.sig, txid, phone });
+async function submit(
+  quote: BillQuote,
+  txid: string,
+  phone: string,
+  payerSig: string
+): Promise<BillResult> {
+  const { httpStatus, data } = await post({
+    action: "submit",
+    quote,
+    sig: quote.sig,
+    txid,
+    phone,
+    payerSig,
+  });
   // 202 = payment still confirming on-chain; normalise to our "pending".
   if (httpStatus === 202) return { status: "pending", detail: data?.error || "Confirming…" };
   return data as BillResult;
@@ -72,6 +85,11 @@ export async function payAirtime(
 ): Promise<BillResult> {
   onStage?.("paying");
   const txid = await payTreasury(quote);
+  const normTxid = txid.trim().replace(/^0x/i, "").toLowerCase();
+  const cleanPhone = phone.trim();
+  const payerSig = await signAuthMessage(
+    `sato:pay:${normTxid}:airtime:${quote.serviceID}:${cleanPhone}:`
+  );
   onStage?.("confirming", txid);
   // Poll: the payment must mine before VTPass fulfills. Bounded so we never hang;
   // if it's still confirming when we give up, the order isn't lost — re-submitting
@@ -79,7 +97,7 @@ export async function payAirtime(
   const deadline = Date.now() + 8 * 60 * 1000;
   let last: BillResult = { status: "pending", txid };
   while (Date.now() < deadline) {
-    const r = await submit(quote, txid, phone);
+    const r = await submit(quote, normTxid, cleanPhone, payerSig);
     if (r.status === "pending") {
       last = { ...r, txid };
       await new Promise((res) => setTimeout(res, 6000));

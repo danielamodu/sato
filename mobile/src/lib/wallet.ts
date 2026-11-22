@@ -14,6 +14,7 @@ import {
   broadcastTransaction,
   serializeTransaction,
   getAddressFromPrivateKey,
+  signMessageHashRsv,
   type ClarityValue,
 } from "@stacks/transactions";
 import { NETWORK, SPONSOR_ENDPOINT, type ContractRef } from "@/config/network";
@@ -62,6 +63,27 @@ export async function revealMnemonic(): Promise<string> {
 export async function wipeWallet(): Promise<void> {
   await SecureStore.deleteItemAsync(SEED_KEY);
   cached = null;
+}
+
+// Import/restore an existing 12- or 24-word BIP-39 recovery phrase onto this
+// device. Validates derivation before replacing the stored mnemonic.
+export async function importWallet(phrase: string): Promise<string> {
+  const normalized = phrase.trim().toLowerCase().replace(/\s+/g, " ");
+  const words = normalized ? normalized.split(" ") : [];
+  if (words.length !== 12 && words.length !== 24) {
+    throw new Error("Enter a valid 12- or 24-word recovery phrase.");
+  }
+  const wallet = await generateWallet({ secretKey: normalized, password: "" });
+  const privateKey = wallet.accounts[0]?.stxPrivateKey;
+  if (!privateKey) {
+    throw new Error("Could not derive a wallet from that phrase.");
+  }
+  const address = getAddressFromPrivateKey(privateKey, NETWORK);
+  await SecureStore.setItemAsync(SEED_KEY, normalized, {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
+  cached = { mnemonic: normalized, privateKey, address };
+  return address;
 }
 
 // Sign locally and broadcast; the user pays their own STX fee. Used only when
@@ -119,4 +141,33 @@ export async function signSponsored(
     throw new Error(data.error || "Gas sponsor rejected the transaction.");
   }
   return data.txId;
+}
+
+function encodeVarint(n: number): Uint8Array {
+  if (n < 0xfd) return new Uint8Array([n]);
+  if (n <= 0xffff) return new Uint8Array([0xfd, n & 0xff, (n >> 8) & 0xff]);
+  return new Uint8Array([0xfe, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]);
+}
+
+async function hashStacksMessage(message: string): Promise<string> {
+  const enc = new TextEncoder();
+  const prefix = enc.encode("\x17Stacks Signed Message:\n");
+  const body = enc.encode(message);
+  const len = encodeVarint(body.length);
+  const payload = new Uint8Array(prefix.length + len.length + body.length);
+  payload.set(prefix, 0);
+  payload.set(len, prefix.length);
+  payload.set(body, prefix.length + len.length);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", payload);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// Sign a plain-text authorization message on-device (used to bind a bill or
+// cash-out payment txid to its destination).
+export async function signAuthMessage(message: string): Promise<string> {
+  const { privateKey } = await load();
+  const messageHash = await hashStacksMessage(message);
+  return signMessageHashRsv({ messageHash, privateKey });
 }
