@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, motion, useMotionValue, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import {
   ArrowLeftRight,
   ArrowRight,
@@ -149,10 +149,10 @@ function EvilLink({
   }, []);
 }
 
-/* ---------- animated counter (counts up when scrolled into view) ---------- */
+/* ---------- animated counter (counts up when scrolled into view, fixed width for 0 CLS) ---------- */
 function CountUp({ to, duration = 1400 }: { to: number; duration?: number }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const [val, setVal] = useState(0);
+  const [val, setVal] = useState(to);
   const started = useRef(false);
   useEffect(() => {
     const el = ref.current;
@@ -173,12 +173,35 @@ function CountUp({ to, duration = 1400 }: { to: number; duration?: number }) {
     io.observe(el);
     return () => io.disconnect();
   }, [to, duration]);
-  return <span ref={ref}>{val.toLocaleString()}</span>;
+  return (
+    <span
+      ref={ref}
+      style={{
+        display: "inline-block",
+        minWidth: `${to.toLocaleString().length}ch`,
+        fontVariantNumeric: "tabular-nums",
+        textAlign: "right",
+      }}
+    >
+      {val.toLocaleString()}
+    </span>
+  );
 }
+
+/* ---------- isolated live earn ticker (prevents full-page re-render every 2.5s) ---------- */
+const LiveEarnValue = memo(function LiveEarnValue({ reduce }: { reduce: boolean }) {
+  const [bal, setBal] = useState(2480.65);
+  useEffect(() => {
+    if (reduce) return;
+    const t = window.setInterval(() => setBal((b) => b + 0.02), 2500);
+    return () => window.clearInterval(t);
+  }, [reduce]);
+  return <>${bal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>;
+});
 
 type LiveTarget = { currentTarget: HTMLElement; clientX: number; clientY: number };
 
-/* ---------- 3D tilt + cursor spotlight props for cards (fine pointers only) ---------- */
+/* ---------- 3D tilt + cursor spotlight props for cards (fine pointers only, rAF-throttled) ---------- */
 function useTilt(max = 2.2) {
   const reduceMotion = useReducedMotion();
   const fine = useMemo(
@@ -188,20 +211,36 @@ function useTilt(max = 2.2) {
   const active = !reduceMotion && fine;
   return useMemo(() => {
     if (!active) return {};
+    let rect: DOMRect | null = null;
+    let raf = 0;
     return {
+      onMouseEnter: (e: LiveTarget) => {
+        rect = e.currentTarget.getBoundingClientRect();
+      },
       onMouseMove: (e: LiveTarget) => {
         const el = e.currentTarget;
-        const r = el.getBoundingClientRect();
-        const x = e.clientX - r.left;
-        const y = e.clientY - r.top;
-        const px = x / r.width - 0.5;
-        const py = y / r.height - 0.5;
-        el.style.setProperty("--mx", `${x.toFixed(0)}px`);
-        el.style.setProperty("--my", `${y.toFixed(0)}px`);
-        el.style.transition = "transform .14s ease-out";
-        el.style.transform = `perspective(1100px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg) translateY(-3px)`;
+        const cx = e.clientX;
+        const cy = e.clientY;
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          const r = rect || el.getBoundingClientRect();
+          const x = cx - r.left;
+          const y = cy - r.top;
+          const px = x / r.width - 0.5;
+          const py = y / r.height - 0.5;
+          el.style.setProperty("--mx", `${x.toFixed(0)}px`);
+          el.style.setProperty("--my", `${y.toFixed(0)}px`);
+          el.style.transition = "transform .14s ease-out";
+          el.style.transform = `perspective(1100px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg) translateY(-3px)`;
+        });
       },
       onMouseLeave: (e: LiveTarget) => {
+        if (raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+        }
+        rect = null;
         const el = e.currentTarget;
         el.style.transition = "transform .55s cubic-bezier(.23,1,.32,1)";
         el.style.transform = "";
@@ -210,7 +249,7 @@ function useTilt(max = 2.2) {
   }, [active, max]);
 }
 
-/* ---------- magnetic pull for primary CTAs (fine pointers only) ---------- */
+/* ---------- magnetic pull for primary CTAs (fine pointers only, rAF-throttled) ---------- */
 function useMagnetic(strength = 6) {
   const reduceMotion = useReducedMotion();
   const fine = useMemo(
@@ -220,16 +259,32 @@ function useMagnetic(strength = 6) {
   const active = !reduceMotion && fine;
   return useMemo(() => {
     if (!active) return {};
+    let rect: DOMRect | null = null;
+    let raf = 0;
     return {
+      onMouseEnter: (e: LiveTarget) => {
+        rect = e.currentTarget.getBoundingClientRect();
+      },
       onMouseMove: (e: LiveTarget) => {
         const el = e.currentTarget;
-        const r = (el as HTMLElement).getBoundingClientRect();
-        const px = (e.clientX - r.left) / r.width - 0.5;
-        const py = (e.clientY - r.top) / r.height - 0.5;
-        (el as HTMLElement).style.transition = "transform .12s ease-out";
-        (el as HTMLElement).style.transform = `translate(${(px * strength * 2).toFixed(1)}px, ${(py * strength * 2).toFixed(1)}px)`;
+        const cx = e.clientX;
+        const cy = e.clientY;
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          const r = rect || el.getBoundingClientRect();
+          const px = (cx - r.left) / r.width - 0.5;
+          const py = (cy - r.top) / r.height - 0.5;
+          el.style.transition = "transform .12s ease-out";
+          el.style.transform = `translate(${(px * strength * 2).toFixed(1)}px, ${(py * strength * 2).toFixed(1)}px)`;
+        });
       },
       onMouseLeave: (e: LiveTarget) => {
+        if (raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+        }
+        rect = null;
         const el2 = e.currentTarget as HTMLElement;
         el2.style.transition = "transform .45s cubic-bezier(.23,1,.32,1)";
         el2.style.transform = "";
@@ -474,10 +529,16 @@ export default function Home() {
   const [paused, setPaused] = useState(false);
   const [burstId, setBurstId] = useState(0);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [bentoFilter, setBentoFilter] = useState<"all" | "send" | "earn" | "cashout">("all");
   const orbitRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLElement>(null);
+  const heroRectRef = useRef<DOMRect | null>(null);
+  const heroRafRef = useRef(0);
+  const mouseX = useMotionValue(0);
+  const leftPhoneX = useTransform(mouseX, (v) => v * -10);
+  const leftPhoneRot = useTransform(mouseX, (v) => -2.5 + v * 1.4);
+  const rightPhoneX = useTransform(mouseX, (v) => v * 10);
+  const rightPhoneRot = useTransform(mouseX, (v) => 2.5 + v * 1.4);
   const arcRef = useRef<HTMLElement>(null);
   const tilt = useTilt(2.2);
   const magnet = useMagnetic(5);
@@ -490,7 +551,6 @@ export default function Home() {
     target: arcRef,
     offset: ["start end", "end start"],
   });
-  const arcScrub = useTransform(arcProgress, [0, 1], [0, orbs.length - 1]);
 
   const heroWait = useWaitlist("people");
   const ctaWait = useWaitlist("people");
@@ -508,8 +568,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
-    onScroll();
+    let last = window.scrollY > 40;
+    setScrolled(last);
+    const onScroll = () => {
+      const next = window.scrollY > 40;
+      if (next !== last) {
+        last = next;
+        setScrolled(next);
+      }
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -551,8 +618,6 @@ export default function Home() {
     return () => window.clearInterval(t);
   }, [reduce, paused, slide]);
 
-  /* earn ticker (illustrative) */
-  const [earnBal, setEarnBal] = useState(2480.65);
   const [phoneTab, setPhoneTab] = useState(0);
   const [dirQuery, setDirQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
@@ -565,11 +630,6 @@ export default function Home() {
     setSendState("idle");
     setPicked(name);
   }
-  useEffect(() => {
-    if (reduce) return;
-    const t = window.setInterval(() => setEarnBal((b) => b + 0.02), 2500);
-    return () => window.clearInterval(t);
-  }, [reduce]);
 
   const active = slides[slide];
   const cloudA = useTransform(heroProgress, [0, 1], [0, 60]);
@@ -583,7 +643,7 @@ export default function Home() {
         <motion.span className="iris-progress" style={{ scaleX: scrollYProgress }} aria-hidden="true" />
         <nav className={scrolled ? "iris-nav scrolled" : "iris-nav"} aria-label="Main">
           <a className="iris-nav-brand" href="#top">
-            <span className="iris-nav-mark"><img src={logoSrc} alt="" /></span><span className="iris-nav-word">sato</span>
+            <span className="iris-nav-mark"><img src={logoSrc} alt="" width={30} height={30} fetchPriority="high" decoding="async" /></span><span className="iris-nav-word">sato</span>
           </a>
           <div className={menuOpen ? "iris-nav-links mobile-open" : "iris-nav-links"}>
             <div
@@ -623,9 +683,22 @@ export default function Home() {
         className="iris-hero"
         id="top"
         ref={heroRef}
+        onMouseEnter={(e) => {
+          heroRectRef.current = e.currentTarget.getBoundingClientRect();
+        }}
         onMouseMove={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setMouse({ x: (e.clientX - r.left) / r.width - 0.5, y: (e.clientY - r.top) / r.height - 0.5 });
+          if (reduce || isMobile || heroRafRef.current) return;
+          const cx = e.clientX;
+          const el = e.currentTarget;
+          heroRafRef.current = requestAnimationFrame(() => {
+            heroRafRef.current = 0;
+            const r = heroRectRef.current || el.getBoundingClientRect();
+            mouseX.set((cx - r.left) / r.width - 0.5);
+          });
+        }}
+        onMouseLeave={() => {
+          heroRectRef.current = null;
+          mouseX.set(0);
         }}
       >
         <div className="iris-clouds" aria-hidden="true">
@@ -640,29 +713,23 @@ export default function Home() {
               <span className="iris-line" aria-hidden="true" key={line}>
                 <motion.span
                   className="iris-line-in"
-                  initial={reduce ? { y: 0 } : { y: "112%" }}
+                  initial={reduce ? false : { y: "14%" }}
                   animate={{ y: 0 }}
-                  transition={{ duration: 0.9, delay: i * 0.1, ease: [0.23, 1, 0.32, 1] }}
+                  transition={{ duration: 0.35, delay: i * 0.04, ease: [0.23, 1, 0.32, 1] }}
                 >
                   {line}
                 </motion.span>
               </span>
             ))}
           </h1>
-          <motion.p
-            className="iris-hero-sub"
-            initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.12 }}
-          >
+          <p className="iris-hero-sub">
             Send to @usernames, earn on your balance, and cash out to local
             currency — one simple app for everyday money on Bitcoin.
-          </motion.p>
-          <motion.div
-            className="iris-hero-ctas"
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.28 }}
-          >
+          </p>
+          <div className="iris-hero-ctas">
             <motion.a className="iris-btn iris-btn-dark" href="#get" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Get early access <motion.span animate={{ x: 0 }} whileHover={{ x: 4 }}><ArrowRight size={16} /></motion.span></motion.a>
             <motion.a className="iris-btn iris-btn-light" href="https://testnet.satoxbt.com/app" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Try the testnet app <ArrowUpRight size={16} /></motion.a>
-          </motion.div>
+          </div>
           <div className="iris-microcopy">Free to join · One useful email · No noise</div>
           <div className="iris-waitrow">
             <span className="iris-avatars" aria-hidden="true">
@@ -691,7 +758,7 @@ export default function Home() {
             className="iris-phone left"
             animate={reduce ? undefined : { y: [0, -5, 0] }}
             transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
-            style={reduce || isMobile ? undefined : { x: mouse.x * -10, rotate: -2.5 + mouse.x * 1.4 }}
+            style={reduce || isMobile ? undefined : { x: leftPhoneX, rotate: leftPhoneRot }}
           >
             <div className="iris-screen">
               <div className="iris-notch"><i /></div>
@@ -761,7 +828,7 @@ export default function Home() {
             className="iris-phone right"
             animate={reduce ? undefined : { y: [0, 5, 0] }}
             transition={{ duration: 7.2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
-            style={reduce || isMobile ? undefined : { x: mouse.x * 10, rotate: 2.5 + mouse.x * 1.4 }}
+            style={reduce || isMobile ? undefined : { x: rightPhoneX, rotate: rightPhoneRot }}
           >
             <div className="iris-screen">
               <div className="iris-notch"><i /></div>
@@ -769,7 +836,7 @@ export default function Home() {
                 <div className="iris-screen-top"><small>PORTFOLIO · SAM</small><span className="iris-live"><ThinkingOrb />EARNING</span></div>
                 <div className="iris-balance-card">
                   <small>TOTAL BALANCE</small>
-                  <div className="big">${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div className="big"><LiveEarnValue reduce={!!reduce} /></div>
                   <div className="sub"><span>₿ 0.03812</span><span className="pos">+$3.12 this week</span></div>
                   <svg className="iris-spark" viewBox="0 0 300 54" width="100%" height="44" aria-hidden="true">
                     <path d="M0 44 C30 43 38 30 62 34 S92 42 116 28 S146 30 168 22 S198 30 220 16 S256 20 300 4" fill="none" stroke="currentColor" strokeWidth="2.5" />
@@ -1082,7 +1149,7 @@ export default function Home() {
                 <span>LIVE ACCRUAL PREVIEW</span>
                 <span className="iris-apy-pill">+4.8% APY · sBTC</span>
               </div>
-              <div className="iris-earn-num">${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="iris-earn-num"><LiveEarnValue reduce={!!reduce} /></div>
               <div className="iris-earn-bar"><i /></div>
               <div className="iris-earn-foot">
                 <span>0.03812 sBTC principal</span>
@@ -1197,7 +1264,7 @@ export default function Home() {
         <div className="iris-foot-grid">
           <div className="iris-foot-brand">
             <a className="iris-nav-brand" href="#top" style={{ border: 0, padding: 0 }}>
-              <span className="iris-nav-mark"><img src={logoSrc} alt="" /></span><span className="iris-nav-word">sato</span>
+              <span className="iris-nav-mark"><img src={logoSrc} alt="" width={30} height={30} loading="lazy" decoding="async" /></span><span className="iris-nav-word">sato</span>
             </a>
             <p>Sato is in preview. Screens and numbers shown are illustrative and subject to change before launch.</p>
           </div>

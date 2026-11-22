@@ -30,7 +30,7 @@ export default function LegalPage({
       <header className="site-header legal-header">
         <Link className="brand" href="/" aria-label="Sato home">
           <span className="brand-mark">
-            <img src="/assets/sato-logo.png" alt="" />
+            <img src="/assets/sato-logo.png" alt="" width={30} height={30} decoding="async" />
           </span>
           <span className="brand-name">sato</span>
         </Link>
@@ -111,7 +111,7 @@ export default function LegalPage({
       <footer className="site-footer section-pad">
         <Link className="brand" href="/">
           <span className="brand-mark">
-            <img src="/assets/sato-logo.png" alt="" />
+            <img src="/assets/sato-logo.png" alt="" width={30} height={30} loading="lazy" decoding="async" />
           </span>
           <span className="brand-name">sato</span>
         </Link>
