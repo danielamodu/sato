@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion, useScroll } from "framer-motion";
 import {
   ArrowLeftRight,
   ArrowRight,
@@ -7,10 +7,11 @@ import {
   AtSign,
   Banknote,
   Bitcoin,
-  Building2,
   Check,
   ChevronDown,
-  Globe,
+  Fingerprint,
+  KeyRound,
+  Lock,
   Menu,
   PiggyBank,
   Plus,
@@ -19,7 +20,6 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
-  Wallet,
   X,
   Zap,
 } from "lucide-react";
@@ -29,38 +29,7 @@ import "./HomeIris.css";
 
 const logoSrc = "/assets/sato-logo.png";
 const BTC_USD = 65000;
-
-/* ---------- thinking-orbs (orbs.jakubantalik.com): 3x3 dot-matrix wave indicator ---------- */
-function ThinkingOrb({ color = "#16a34a" }: { color?: string }) {
-  return (
-    <svg className="iris-think-orb" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
-      {[0, 1, 2].map((r) =>
-        [0, 1, 2].map((c) => {
-          const delay = ((r + c) * 0.16).toFixed(2);
-          return (
-            <circle
-              key={`${r}-${c}`}
-              cx={2 + c * 3.5}
-              cy={2 + r * 3.5}
-              r="1.15"
-              fill={color}
-              style={{ animationDelay: `${delay}s` }}
-            />
-          );
-        }),
-      )}
-    </svg>
-  );
-}
-
-const tickerItems = [
-  { tag: "SETTLED", text: "@amani → 0.012 sBTC ($780.00)", meta: "0.4s · Gasless" },
-  { tag: "YIELD", text: "sBTC Vault v3 · +4.8% APY", meta: "SIP-010 · Accruing" },
-  { tag: "CASHOUT", text: "0.008 sBTC → NGN Bank Rail", meta: "HMAC Quote · Verified" },
-  { tag: "MERCHANT", text: "@corner-cafe · QR Receipt #8F4A", meta: "Zero address copy" },
-  { tag: "SPONSOR", text: "Gas Pool Active · 100% fee coverage", meta: "Stacks L2 Testnet" },
-  { tag: "CUSTODY", text: "Hardware Enclave Keys · Self-custodial", meta: "Passkey / Biometric" },
-];
+const USD_NGN = 1580;
 
 /* ---------- shared waitlist hook ---------- */
 function useWaitlist(audience: string) {
@@ -91,253 +60,42 @@ function useWaitlist(audience: string) {
   return { email, setEmail, company, setCompany, submitted, sending, error, submit };
 }
 
-/* ---------- evil button: spring tap + arrow fling ---------- */
-function EvilButton({
-  children,
-  className,
-  style,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode }) {
+/* ---------- thinking-orbs (orbs.jakubantalik.com): 3x3 dot-matrix wave ---------- */
+function ThinkingOrb({ color = "#4ade80" }: { color?: string }) {
   return (
-    <motion.button
-      className={className}
-      style={style as any}
-      whileTap={{ scale: 0.94 }}
-      whileHover={{ scale: 1.02 }}
-      transition={{ type: "spring", stiffness: 420, damping: 18 }}
-      {...(props as any)}
-    >
-      {children}
-    </motion.button>
-  );
-}
-function EvilLink({
-  children,
-  className,
-  href,
-  ...props
-}: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children: React.ReactNode; href: string }) {
-  return (
-    <motion.a
-      className={className}
-      href={href}
-      whileTap={{ scale: 0.94 }}
-      whileHover={{ scale: 1.02 }}
-      transition={{ type: "spring", stiffness: 420, damping: 18 }}
-      {...(props as any)}
-    >
-      {children}
-    </motion.a>
+    <svg className="sato-think-orb" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+      {[0, 1, 2].map((r) =>
+        [0, 1, 2].map((c) => {
+          const delay = ((r + c) * 0.15).toFixed(2);
+          return (
+            <circle
+              key={`${r}-${c}`}
+              cx={2 + c * 3.5}
+              cy={2 + r * 3.5}
+              r="1.15"
+              fill={color}
+              style={{ animationDelay: `${delay}s` }}
+            />
+          );
+        }),
+      )}
+    </svg>
   );
 }
 
-/* ---------- scroll reveal (staggered) ---------- */function useIrisReveal() {
-  useEffect(() => {
-    const els = Array.from(document.querySelectorAll<HTMLElement>(".iris-reveal"));
-    if (!("IntersectionObserver" in window)) {
-      els.forEach((el) => el.classList.add("in"));
-      return;
-    }
-    const io = new IntersectionObserver(
-      (entries) => entries.forEach((en) => {
-        if (en.isIntersecting) { (en.target as HTMLElement).classList.add("in"); io.unobserve(en.target); }
-      }),
-      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" },
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, []);
-}
-
-/* ---------- animated counter (counts up when scrolled into view) ---------- */
-function CountUp({ to, duration = 1400 }: { to: number; duration?: number }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const [val, setVal] = useState(0);
-  const started = useRef(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(([en]) => {
-      if (en.isIntersecting && !started.current) {
-        started.current = true;
-        const t0 = performance.now();
-        const tick = (t: number) => {
-          const p = Math.min(1, (t - t0) / duration);
-          setVal(Math.round(to * (1 - Math.pow(1 - p, 3))));
-          if (p < 1) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-        io.disconnect();
-      }
-    }, { threshold: 0.5 });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [to, duration]);
-  return <span ref={ref}>{val.toLocaleString()}</span>;
-}
-
-type LiveTarget = { currentTarget: HTMLElement; clientX: number; clientY: number };
-
-/* ---------- 3D tilt + cursor spotlight props for cards (fine pointers only) ---------- */
-function useTilt(max = 2.2) {
-  const reduceMotion = useReducedMotion();
-  const fine = useMemo(
-    () => typeof window !== "undefined" && window.matchMedia("(pointer:fine)").matches,
-    [],
-  );
-  const active = !reduceMotion && fine;
-  return useMemo(() => {
-    if (!active) return {};
-    return {
-      onMouseMove: (e: LiveTarget) => {
-        const el = e.currentTarget;
-        const r = el.getBoundingClientRect();
-        const x = e.clientX - r.left;
-        const y = e.clientY - r.top;
-        const px = x / r.width - 0.5;
-        const py = y / r.height - 0.5;
-        el.style.setProperty("--mx", `${x.toFixed(0)}px`);
-        el.style.setProperty("--my", `${y.toFixed(0)}px`);
-        el.style.transition = "transform .14s ease-out";
-        el.style.transform = `perspective(1100px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg) translateY(-3px)`;
-      },
-      onMouseLeave: (e: LiveTarget) => {
-        const el = e.currentTarget;
-        el.style.transition = "transform .55s cubic-bezier(.23,1,.32,1)";
-        el.style.transform = "";
-      },
-    };
-  }, [active, max]);
-}
-
-/* ---------- magnetic pull for primary CTAs (fine pointers only) ---------- */
-function useMagnetic(strength = 6) {
-  const reduceMotion = useReducedMotion();
-  const fine = useMemo(
-    () => typeof window !== "undefined" && window.matchMedia("(pointer:fine)").matches,
-    [],
-  );
-  const active = !reduceMotion && fine;
-  return useMemo(() => {
-    if (!active) return {};
-    return {
-      onMouseMove: (e: LiveTarget) => {
-        const el = e.currentTarget;
-        const r = (el as HTMLElement).getBoundingClientRect();
-        const px = (e.clientX - r.left) / r.width - 0.5;
-        const py = (e.clientY - r.top) / r.height - 0.5;
-        (el as HTMLElement).style.transition = "transform .12s ease-out";
-        (el as HTMLElement).style.transform = `translate(${(px * strength * 2).toFixed(1)}px, ${(py * strength * 2).toFixed(1)}px)`;
-      },
-      onMouseLeave: (e: LiveTarget) => {
-        const el2 = e.currentTarget as HTMLElement;
-        el2.style.transition = "transform .45s cubic-bezier(.23,1,.32,1)";
-        el2.style.transform = "";
-      },
-    };
-  }, [active, strength]);
-}
-
-/* ---------- draggable orbit bubble (hand-rolled pointer drag + scroll scrub highlight) ---------- */
-const ORB_LEASH = 120;
-
-function Bubble({
-  o,
-  i,
-  total,
-  active,
-  disabled,
-  reduce,
-}: {
-  o: (typeof orbs)[number];
-  i: number;
-  total: number;
-  active: boolean;
-  disabled: boolean;
-  reduce: boolean;
-}) {
-  const angle = Math.PI - (i / (total - 1)) * Math.PI;
-  const scrub = active ? 6 : 0;
-  const left = 50 + 43 * Math.cos(angle);
-  const top = 92 - 78 * Math.sin(angle) - (active ? 4 : 0);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const grab = useRef({ active: false, sx: 0, sy: 0 });
-
-  return (
-    <span className="iris-orb-pos" style={{ left: `${left}%`, top: `${top}%`, transition: "top .35s var(--iris-ease)" }}>
-      <span
-        className={dragging ? "iris-orb-drag dragging" : "iris-orb-drag"}
-        style={{
-          width: o.size,
-          height: o.size,
-          transform: `translate(${pos.x.toFixed(1)}px, ${pos.y.toFixed(1)}px) scale(${dragging ? 1.25 : active ? 1.1 : 1})`,
-          transition: dragging ? "none" : "transform .55s cubic-bezier(.23,1,.32,1)",
-          zIndex: dragging ? 6 : active ? 4 : undefined,
-        }}
-        onPointerDown={(e) => {
-          if (disabled) return;
-          e.preventDefault();
-          try {
-            e.currentTarget.setPointerCapture(e.pointerId);
-          } catch {
-            /* pointer already gone — ignore */
-          }
-          grab.current = { active: true, sx: e.clientX - pos.x, sy: e.clientY - pos.y };
-          setDragging(true);
-        }}
-        onPointerMove={(e) => {
-          if (!grab.current.active || disabled) return;
-          let x = e.clientX - grab.current.sx;
-          let y = e.clientY - grab.current.sy;
-          const d = Math.hypot(x, y);
-          if (d > ORB_LEASH) {
-            x = (x / d) * ORB_LEASH;
-            y = (y / d) * ORB_LEASH;
-          }
-          setPos({ x, y });
-        }}
-        onPointerUp={() => {
-          if (!grab.current.active) return;
-          grab.current.active = false;
-          setDragging(false);
-          setPos({ x: 0, y: 0 });
-        }}
-        onPointerCancel={() => {
-          grab.current.active = false;
-          setDragging(false);
-          setPos({ x: 0, y: 0 });
-        }}
-        onDragStart={(e) => e.preventDefault()}
-      >
-        <motion.span
-          className={active ? "iris-orb active" : "iris-orb"}
-          style={{ width: "100%", height: "100%", background: o.bg, borderColor: "transparent" }}
-          animate={reduce || disabled ? undefined : { y: [0, -9 - scrub, 0] }}
-          transition={{ duration: 4 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.35 }}
-          whileHover={reduce || disabled ? undefined : { scale: 1.14 }}
-        >
-          <o.icon size={22} color="#fff" />
-          <span className="tip">{o.label}</span>
-        </motion.span>
-      </span>
-    </span>
-  );
-}
-
-/* ---------- masked line-rise for section headlines (mirrors the hero) ---------- */
+/* ---------- masked line-rise (atoma.fi / pay.ethena.fi) ---------- */
 function RiseLines({ lines, delay = 0 }: { lines: ReactNode[]; delay?: number }) {
   const reduceMotion = useReducedMotion();
   return (
     <>
       {lines.map((line, i) => (
-        <span className="iris-line" key={i}>
+        <span className="sato-line" key={i}>
           <motion.span
-            className="iris-line-in"
-            initial={reduceMotion ? { y: 0 } : { y: "112%" }}
+            className="sato-line-in"
+            initial={reduceMotion ? { y: 0 } : { y: "108%" }}
             whileInView={{ y: 0 }}
-            viewport={{ once: true, margin: "-10% 0px" }}
-            transition={{ duration: 0.85, delay: delay + i * 0.1, ease: [0.23, 1, 0.32, 1] }}
+            viewport={{ once: true, margin: "-8% 0px" }}
+            transition={{ duration: 0.85, delay: delay + i * 0.09, ease: [0.22, 1, 0.36, 1] }}
           >
             {line}
           </motion.span>
@@ -347,907 +105,1110 @@ function RiseLines({ lines, delay = 0 }: { lines: ReactNode[]; delay?: number })
   );
 }
 
-/* ---------- carousel data ---------- */
+/* ---------- cursor spotlight for dark & light surfaces ---------- */
+function useSpotlight() {
+  const reduceMotion = useReducedMotion();
+  return useMemo(() => {
+    if (reduceMotion) return {};
+    return {
+      onMouseMove: (e: React.MouseEvent<HTMLElement>) => {
+        const el = e.currentTarget;
+        const r = el.getBoundingClientRect();
+        el.style.setProperty("--mx", `${(e.clientX - r.left).toFixed(0)}px`);
+        el.style.setProperty("--my", `${(e.clientY - r.top).toFixed(0)}px`);
+      },
+    };
+  }, [reduceMotion]);
+}
+
+/* ---------- data ---------- */
+const tickerItems = [
+  { tag: "SETTLED", text: "@amani → 0.012 sBTC ($780.00)", meta: "0.4s · Gasless" },
+  { tag: "YIELD", text: "sBTC Vault v3 · +4.8% APY", meta: "SIP-010 · Accruing" },
+  { tag: "CASHOUT", text: "0.008 sBTC → NGN Bank Rail", meta: "HMAC Quote · Verified" },
+  { tag: "MERCHANT", text: "@corner-cafe · QR Receipt #8F4A", meta: "Zero address copy" },
+  { tag: "SPONSOR", text: "Gas Pool Active · 100% fee coverage", meta: "Stacks L2 Testnet" },
+  { tag: "CUSTODY", text: "Hardware Enclave Keys · Self-custodial", meta: "Passkey / Biometric" },
+];
+
 const slides = [
   {
     key: "send",
+    num: "01",
     pill: "Send",
-    headline: "From @username to done, clearly.",
-    body: "Pick a person or business by name, see Bitcoin and local money side by side, and confirm knowing exactly what moves.",
-    grad: "linear-gradient(145deg, #f6ece3 0%, #efe6dc 52%, #e4ebf4 100%)",
+    headline: "Pay by @username, never an address.",
+    body: "Type a human name or scan a merchant QR. Sato displays the exact sBTC and local currency amounts side-by-side and sponsors the network fee before you confirm.",
     conn: ["You", "@amani"],
+    badge: "GASLESS CO-SIGN",
     docs: [
-      { icon: Send, bg: "#f15a24", title: "@amani · 0.012 sBTC", sub: "≈ $780.42 · fee $0.40 · preview" },
-      { icon: QrCode, bg: "#111925", title: "Corner café · paid", sub: "Receipt shared · preview" },
+      { icon: Send, accent: "#f15a24", title: "@amani · 0.012 sBTC", sub: "≈ $780.00 · Fee $0.00 (Sponsored)" },
+      { icon: QrCode, accent: "#0d1117", title: "@corner-cafe · Merchant QR", sub: "Dual-party receipt #8F4A · Settled" },
     ],
     feed: [
-      { dot: "#1d7a4c", text: "Payment confirmed", time: "12:42" },
-      { dot: "#f15a24", text: "Fee shown before confirm", time: "12:41" },
-      { dot: "#8c98aa", text: "Receipt saved", time: "12:40" },
+      { dot: "#16a34a", text: "Stacks L2 settlement confirmed", time: "12:42:08" },
+      { dot: "#f15a24", text: "sato-sponsor co-signed gas fee", time: "12:42:04" },
+      { dot: "#64748b", text: "Enclave biometric signature verified", time: "12:42:02" },
     ],
   },
   {
     key: "earn",
+    num: "02",
     pill: "Earn",
-    headline: "Your balance keeps working quietly.",
-    body: "No second account, no homework. The sBTC sitting in Sato keeps earning in the background while you spend.",
-    grad: "linear-gradient(145deg, #ebf2ee 0%, #e5edf7 55%, #dce6f3 100%)",
-    conn: ["Balance", "+ yield"],
+    headline: "Your Bitcoin works while it sits.",
+    body: "No second account, no staking homework, no lockup maze. Your sBTC balance accrues yield automatically via sato-yield-v3 while staying liquid to spend anytime.",
+    conn: ["sBTC Balance", "sato-yield-v3"],
+    badge: "+4.8% APY PREVIEW",
     docs: [
-      { icon: PiggyBank, bg: "#1d7a4c", title: "Balance · $2,480.65", sub: "+$3.12 this week · illustrative" },
-      { icon: Sparkles, bg: "#f15a24", title: "Yield accrues daily", sub: "No lockups in preview" },
+      { icon: PiggyBank, accent: "#16a34a", title: "Vault Balance · $2,480.65", sub: "0.03812 sBTC · +$3.12 this week" },
+      { icon: Sparkles, accent: "#f15a24", title: "Continuous SIP-010 accrual", sub: "Liquid withdrawal · Zero lockup" },
     ],
     feed: [
-      { dot: "#1d7a4c", text: "Yield added", time: "09:00" },
-      { dot: "#1d7a4c", text: "Yield added", time: "Mon" },
-      { dot: "#8c98aa", text: "Balance updated", time: "Sun" },
+      { dot: "#16a34a", text: "Daily yield epoch distributed", time: "09:00:00" },
+      { dot: "#16a34a", text: "Compound index updated (v3)", time: "Yesterday" },
+      { dot: "#64748b", text: "Vault solvency proof verified", time: "Mon" },
     ],
   },
   {
     key: "cashout",
+    num: "03",
     pill: "Cash out",
-    headline: "Back to local money on your terms.",
-    body: "Move from Bitcoin to your bank when you need it, with the cost and timing stated before you tap confirm.",
-    grad: "linear-gradient(145deg, #e8eef7 0%, #f1eae2 58%, #f4e2d3 100%)",
-    conn: ["sBTC", "Your bank"],
+    headline: "Back to local bank rails on your terms.",
+    body: "Move from sBTC to your local bank account or settle everyday utility bills with HMAC-SHA256 signed exchange rates locked upfront for 30 seconds.",
+    conn: ["sBTC", "Local Bank"],
+    badge: "HMAC-SIGNED QUOTE",
     docs: [
-      { icon: Banknote, bg: "#111925", title: "$500 → Chase ····42", sub: "Arrives 1–2 days · preview" },
-      { icon: Receipt, bg: "#c4502a", title: "Fee $1.20 · shown upfront", sub: "No surprises at confirm" },
+      { icon: Banknote, accent: "#0d1117", title: "$500.00 → GTBank ····4219", sub: "Rate locked 30s · Arrives instantly" },
+      { icon: Receipt, accent: "#f15a24", title: "Fee $1.20 · Shown before confirm", sub: "Zero hidden spread · Full receipt" },
     ],
     feed: [
-      { dot: "#f15a24", text: "Cash out started", time: "10:15" },
-      { dot: "#8c98aa", text: "Rate locked for 30s", time: "10:15" },
-      { dot: "#1d7a4c", text: "Last cash out arrived", time: "Fri" },
+      { dot: "#16a34a", text: "Bank rail payout settled", time: "10:15:42" },
+      { dot: "#f15a24", text: "HMAC-SHA256 quote verified", time: "10:15:11" },
+      { dot: "#64748b", text: "On-chain sBTC transfer confirmed", time: "10:15:04" },
     ],
   },
-];
-
-const orbs = [
-  { icon: Bitcoin, bg: "#f7931a", label: "Bitcoin", size: 70 },
-  { icon: Zap, bg: "#111925", label: "Stacks", size: 62 },
-  { icon: Wallet, bg: "#f15a24", label: "sBTC balance", size: 68 },
-  { icon: AtSign, bg: "#1d7a4c", label: "@username directory", size: 60 },
-  { icon: Building2, bg: "#2e6bf0", label: "Bank rails", size: 66 },
-  { icon: QrCode, bg: "#0d1117", label: "Merchant QR", size: 58 },
-  { icon: Receipt, bg: "#c4502a", label: "Receipts", size: 60 },
-  { icon: ArrowLeftRight, bg: "#5b6b7f", label: "Send + cash out", size: 64 },
 ];
 
 const directory = [
-  { name: "@amani", color: "#f15a24" },
-  { name: "@corner-cafe", color: "#111925" },
-  { name: "@jules", color: "#1d7a4c" },
-  { name: "@satoshi", color: "#f7931a" },
-  { name: "@mama-nkechi", color: "#2e6bf0" },
-  { name: "@berlin-kiosk", color: "#c4502a" },
+  { name: "@amani", role: "Design · Lagos", color: "#f15a24" },
+  { name: "@corner-cafe", role: "Merchant QR", color: "#1d7a4c" },
+  { name: "@mama-nkechi", role: "Family", color: "#3b82f6" },
+  { name: "@jules", role: "Engineering", color: "#8b5cf6" },
+  { name: "@satoshi", role: "Protocol", color: "#f59e0b" },
 ];
 
-const phoneViews = [
+const yieldCurves: Record<"1W" | "1M" | "1Y", { delta: string; path: string; area: string }> = {
+  "1W": {
+    delta: "+$3.12 (+0.12%)",
+    path: "M0 68 C40 65 75 56 120 52 C165 48 210 38 260 30 C300 24 335 18 360 14",
+    area: "M0 68 C40 65 75 56 120 52 C165 48 210 38 260 30 C300 24 335 18 360 14 L360 88 L0 88 Z",
+  },
+  "1M": {
+    delta: "+$14.80 (+0.60%)",
+    path: "M0 74 C50 70 95 62 140 50 C190 38 235 42 285 26 C320 16 342 12 360 8",
+    area: "M0 74 C50 70 95 62 140 50 C190 38 235 42 285 26 C320 16 342 12 360 8 L360 88 L0 88 Z",
+  },
+  "1Y": {
+    delta: "+$119.07 (+4.80%)",
+    path: "M0 80 C60 76 110 64 165 48 C215 34 260 28 310 14 C335 8 350 5 360 3",
+    area: "M0 80 C60 76 110 64 165 48 C215 34 260 28 310 14 C335 8 350 5 360 3 L360 88 L0 88 Z",
+  },
+};
+
+const trustPillars = [
   {
-    chip: ["Send", "to @name"] as const,
-    rows: [
-      { icon: QrCode, bg: "#111925", t: "Paid corner café", s: "Receipt shared · preview" },
-      { icon: Send, bg: "#f15a24", t: "Sent @amani · 0.012", s: "Confirmed · preview" },
-      { icon: Receipt, bg: "#c4502a", t: "Fee $0.40 · shown first", s: "Nothing buried" },
-    ],
+    num: "01",
+    icon: Fingerprint,
+    title: "Hardware enclave custody",
+    body: "Private keys are generated and sealed inside your phone's Secure Enclave or Android Keystore. Sato never sees or stores your keys.",
   },
   {
-    chip: ["Earn", "daily"] as const,
-    rows: [
-      { icon: PiggyBank, bg: "#1d7a4c", t: "Yield added · +$0.44", s: "Today · illustrative" },
-      { icon: Sparkles, bg: "#f15a24", t: "Yield added · +$0.41", s: "Yesterday · illustrative" },
-      { icon: Check, bg: "#111925", t: "Balance updated", s: "No lockups in preview" },
-    ],
+    num: "02",
+    icon: Zap,
+    title: "Gasless meta-transactions",
+    body: "Our sato-sponsor relay co-signs Stacks network fees automatically, so you send Bitcoin without ever holding or managing STX.",
   },
   {
-    chip: ["Cash out", "to bank"] as const,
-    rows: [
-      { icon: Banknote, bg: "#c4502a", t: "Cash out arrived", s: "$500 · Chase ····42" },
-      { icon: ArrowLeftRight, bg: "#111925", t: "Cash out started", s: "$200 · rate locked 30s" },
-      { icon: Check, bg: "#1d7a4c", t: "Last cash out arrived", s: "Friday · preview" },
-    ],
+    num: "03",
+    icon: Lock,
+    title: "Cryptographic rate locks",
+    body: "Every utility payment and bank cash-out quote is HMAC-SHA256 signed with an explicit 30-second countdown. Zero hidden spreads.",
+  },
+  {
+    num: "04",
+    icon: KeyRound,
+    title: "Open Clarity contracts",
+    body: "Built transparently on Stacks L2 with verifiable sato-yield-v3, sato-names, and SIP-010 vault contracts you can inspect anytime.",
   },
 ];
 
 const faqs = [
-  { q: "What is Sato, exactly?", a: "Sato is a Bitcoin money app in preview: send sBTC to @usernames, earn on your balance, and cash out to local currency. One app for the payments you already make — no wallet addresses to copy." },
-  { q: "Do I need a crypto wallet or seed phrase?", a: "No. Sato is designed so you sign in and pay people by name. Before launch we'll publish exactly how balances are held, what Sato can and cannot access, and what your recovery options are." },
-  { q: "What does a payment cost?", a: "You'll see the amount, any Sato fee, and any network or conversion cost before you confirm — in both Bitcoin and your local currency. The final fee model will be published before invites open." },
-  { q: "How long do payments take?", a: "Sato shows a clear state from sending to confirmed so you always know what happened. Timing can depend on the Bitcoin and Stacks networks, the recipient, and the local rail used for cash out." },
-  { q: "Does my balance really earn?", a: "That's the plan: your sBTC balance works in the background with no second account to manage. Rates, mechanics, and risks will be published in plain language before launch — anything shown now is an illustrative preview." },
-  { q: "Can my business get paid with Sato?", a: "Yes — businesses get a @name, a QR code, and a clear paid receipt for every sale. Join the waitlist as a business and tell us where you operate so we can prioritize your region." },
-  { q: "Where will Sato be available first?", a: "Availability depends on local-currency partners and regional requirements. Join the list and tell us where you're based — we'll share launch updates for your region first." },
+  { q: "What is Sato, exactly?", a: "Sato is a non-custodial Bitcoin money app built on Stacks: send sBTC to @usernames without gas friction, earn on your balance, and cash out to local bank rails or pay everyday bills from one calm interface." },
+  { q: "Do I need a crypto wallet or seed phrase?", a: "No. Sato creates an embedded hardware-backed wallet tied to your device biometrics. You own your keys locally without having to copy hex addresses or juggle external browser extensions." },
+  { q: "How do gasless Bitcoin transfers work?", a: "When you tap confirm, your phone signs the sBTC transfer locally and sends it to our sato-sponsor relay. The sponsor co-signs the STX network fee on your behalf without ever touching your funds." },
+  { q: "What does a payment or cash-out cost?", a: "Every transfer and cash-out displays the exact sBTC amount, local currency equivalent, network/sponsor fee, and arrival window before your thumb moves. Nothing is buried." },
+  { q: "Does my balance really earn?", a: "Yes — eligible sBTC balances route through our sato-yield-v3 Clarity vault while remaining liquid. Any APY numbers shown in preview are illustrative; live yield mechanics and audits will publish before mainnet launch." },
+  { q: "Can businesses accept payments with Sato?", a: "Yes. Merchants register a clean @name, display a static or dynamic QR code, and receive instant verifiable receipts for every sale with direct settlement to local currency." },
+  { q: "Where is Sato launching first?", a: "We are live on Stacks Testnet today with Nigerian utility bill settlement (VTPass) and NGN/USD cash-out rails in active rollout. Join the waitlist for regional mainnet invites." },
 ];
 
 export default function Home() {
   usePageMeta(
     "Sato — Bitcoin money that feels human.",
-    "Sato is a Bitcoin money app: send to @anyone, earn on your balance, cash out to local currency.",
+    "Non-custodial Bitcoin payments on Stacks: send sBTC by @username with zero gas friction, earn yield, and cash out to local currency.",
   );
-  useIrisReveal();
+
   const reduce = useReducedMotion();
+  const spotlight = useSpotlight();
+  const { scrollYProgress } = useScroll();
+
   const [scrolled, setScrolled] = useState(false);
+  const [navLight, setNavLight] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
   const [slide, setSlide] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [burstId, setBurstId] = useState(0);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [bentoFilter, setBentoFilter] = useState<"all" | "send" | "earn" | "cashout">("all");
-  const orbitRef = useRef<HTMLDivElement>(null);
-  const heroRef = useRef<HTMLElement>(null);
-  const arcRef = useRef<HTMLElement>(null);
-  const tilt = useTilt(2.2);
-  const magnet = useMagnetic(5);
-  const { scrollYProgress } = useScroll();
-  const { scrollYProgress: heroProgress } = useScroll({
-    target: heroRef,
-    offset: ["start start", "end start"],
-  });
-  const { scrollYProgress: arcProgress } = useScroll({
-    target: arcRef,
-    offset: ["start end", "end start"],
-  });
-  const arcScrub = useTransform(arcProgress, [0, 1], [0, orbs.length - 1]);
+  const [timeframe, setTimeframe] = useState<"1W" | "1M" | "1Y">("1M");
+  const [calcBtc, setCalcBtc] = useState(0.25);
 
-  const heroWait = useWaitlist("people");
   const ctaWait = useWaitlist("people");
   const newsWait = useWaitlist("newsletter");
 
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 760px)");
-    const sync = () => {
-      setIsMobile(mq.matches);
-      if (!mq.matches) setMenuOpen(false);
-    };
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
+  /* Interactive hero terminal send state */
+  const [to, setTo] = useState("@amani");
+  const [satAmt, setSatAmt] = useState(0.012);
+  const [sendStage, setSendStage] = useState<"idle" | "signing" | "sponsoring" | "done">("idle");
+  const [dirQuery, setDirQuery] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
+  const [earnBal, setEarnBal] = useState(2480.65);
+
+  const fiatUsd = useMemo(() => satAmt * BTC_USD, [satAmt]);
+  const fiatNgn = useMemo(() => Math.round(fiatUsd * USD_NGN), [fiatUsd]);
+  const projectedYieldBtc = useMemo(() => calcBtc * 0.048, [calcBtc]);
+  const projectedYieldUsd = useMemo(() => projectedYieldBtc * BTC_USD, [projectedYieldBtc]);
+
+  const dirMatches = useMemo(
+    () => directory.filter((d) => d.name.toLowerCase().includes(dirQuery.trim().toLowerCase())),
+    [dirQuery],
+  );
+
+  function triggerSend() {
+    if (sendStage !== "idle") return;
+    setSendStage("signing");
+    window.setTimeout(() => setSendStage("sponsoring"), 550);
+    window.setTimeout(() => setSendStage("done"), 1200);
+  }
+
+  function pickRecipient(name: string) {
+    setTo(name);
+    setSendStage("idle");
+    setPicked(name);
+  }
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
+    const onScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 32);
+      const howEl = document.getElementById("how");
+      const whyEl = document.getElementById("why");
+      const trustEl = document.getElementById("trust");
+      if (howEl && whyEl && trustEl) {
+        const howTop = howEl.getBoundingClientRect().top;
+        const whyTop = whyEl.getBoundingClientRect().top;
+        const trustTop = trustEl.getBoundingClientRect().top;
+        const inLightHow = howTop <= 72 && whyTop > 72;
+        const inLightTrust = trustTop <= 72;
+        setNavLight(inLightHow || inLightTrust);
+      }
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  /* interactive send demo */
-  const [to, setTo] = useState("@amani");
-  const [satAmt, setSatAmt] = useState(0.012);
-  const [sendState, setSendState] = useState<"idle" | "sending" | "done">("idle");
-  const fiat = useMemo(() => satAmt * BTC_USD, [satAmt]);
-  function reviewSend() {
-    if (sendState !== "idle") return;
-    setSendState("sending");
-    window.setTimeout(() => {
-      setSendState("done");
-      setBurstId((b) => b + 1);
-    }, 1100);
-  }
-  const burstParts = useMemo(
-    () =>
-      Array.from({ length: 14 }, (_, i) => {
-        const a = (i / 14) * Math.PI * 2 + Math.random() * 0.5;
-        const d = 46 + Math.random() * 54;
-        return {
-          x: Math.cos(a) * d,
-          y: Math.sin(a) * d - 20,
-          c: ["#f15a24", "#1d7a4c", "#111925", "#2e6bf0"][i % 4],
-          s: 5 + (i % 3) * 2,
-          r: (i * 47) % 180,
-        };
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [burstId],
-  );
-
-  /* autoplay the how-it-works carousel (pauses on hover) */
   useEffect(() => {
     if (reduce || paused) return;
-    const t = window.setInterval(() => setSlide((s) => (s + 1) % slides.length), 5500);
+    const t = window.setInterval(() => setSlide((s) => (s + 1) % slides.length), 6000);
     return () => window.clearInterval(t);
   }, [reduce, paused, slide]);
 
-  /* earn ticker (illustrative) */
-  const [earnBal, setEarnBal] = useState(2480.65);
-  const [phoneTab, setPhoneTab] = useState(0);
-  const [dirQuery, setDirQuery] = useState("");
-  const [picked, setPicked] = useState<string | null>(null);
-  const dirMatches = useMemo(
-    () => directory.filter((d) => d.name.toLowerCase().includes(dirQuery.trim().toLowerCase())),
-    [dirQuery],
-  );
-  function pickRecipient(name: string) {
-    setTo(name);
-    setSendState("idle");
-    setPicked(name);
-  }
   useEffect(() => {
     if (reduce) return;
-    const t = window.setInterval(() => setEarnBal((b) => b + 0.02), 2500);
+    const t = window.setInterval(() => setEarnBal((b) => b + 0.02), 2600);
     return () => window.clearInterval(t);
   }, [reduce]);
 
   const active = slides[slide];
-  const cloudA = useTransform(heroProgress, [0, 1], [0, 60]);
-  const cloudB = useTransform(heroProgress, [0, 1], [0, 110]);
-  const phoneSink = useTransform(heroProgress, [0, 1], [0, -70]);
+  const curve = yieldCurves[timeframe];
 
   return (
-    <div className="iris-page">
-      {/* ---------- floating nav ---------- */}
-      <div className="iris-navwrap">
-        <motion.span className="iris-progress" style={{ scaleX: scrollYProgress }} aria-hidden="true" />
-        <nav className={scrolled ? "iris-nav scrolled" : "iris-nav"} aria-label="Main">
-          <a className="iris-nav-brand" href="#top">
-            <span className="iris-nav-mark"><img src={logoSrc} alt="" /></span><span className="iris-nav-word">sato</span>
+    <div className="sato-root" id="top">
+      <motion.span className="sato-progress" style={{ scaleX: scrollYProgress }} aria-hidden="true" />
+
+      {/* ---------- floating glass navigation ---------- */}
+      <div className="sato-navwrap">
+        <nav
+          className={`sato-nav ${scrolled ? "scrolled" : ""} ${navLight ? "on-light" : "on-dark"}`}
+          aria-label="Main navigation"
+        >
+          <a className="sato-brand" href="#top">
+            <span className="sato-brand-mark">
+              <img src={logoSrc} alt="" />
+            </span>
+            <span className="sato-brand-word">sato</span>
           </a>
-          <div className={menuOpen ? "iris-nav-links mobile-open" : "iris-nav-links"}>
+
+          <div className={menuOpen ? "sato-nav-links open" : "sato-nav-links"}>
             <div
-              className={dropOpen ? "iris-has-drop open" : "iris-has-drop"}
+              className={dropOpen ? "sato-has-drop open" : "sato-has-drop"}
               onMouseEnter={() => setDropOpen(true)}
               onMouseLeave={() => setDropOpen(false)}
             >
-              <button className="iris-nav-link" aria-expanded={dropOpen} onClick={() => setDropOpen(!dropOpen)}>
+              <button className="sato-nav-link" aria-expanded={dropOpen} onClick={() => setDropOpen(!dropOpen)}>
                 Product <ChevronDown size={14} />
               </button>
-              <div className="iris-dropdown">
+              <div className="sato-dropdown">
                 {[
-                  { icon: Send, t: "Send to @anyone", s: "Skip the address, pay by name" },
-                  { icon: PiggyBank, t: "Earn on balance", s: "sBTC works while it sits" },
-                  { icon: Banknote, t: "Cash out", s: "Back to local currency" },
+                  { icon: Send, t: "Send to @anyone", s: "Gasless sBTC by username or QR", href: "#how" },
+                  { icon: PiggyBank, t: "Earn on sBTC", s: "Continuous sato-yield-v3 accrual", href: "#why" },
+                  { icon: Banknote, t: "Cash out & Bills", s: "HMAC-signed local currency rails", href: "#how" },
                 ].map((d) => (
-                  <a key={d.t} className="iris-drop-item" href="#how" onClick={() => { setMenuOpen(false); setDropOpen(false); }}>
-                    <span className="iris-drop-ic"><d.icon size={16} /></span>
+                  <a key={d.t} className="sato-drop-item" href={d.href} onClick={() => { setMenuOpen(false); setDropOpen(false); }}>
+                    <span className="sato-drop-ic"><d.icon size={15} /></span>
                     <span><strong>{d.t}</strong><small>{d.s}</small></span>
                   </a>
                 ))}
               </div>
             </div>
-            <a className="iris-nav-link" href="#why" onClick={() => setMenuOpen(false)}>Why Sato</a>
-            <a className="iris-nav-link" href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
-            <a className="iris-nav-link" href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
+            <a className="sato-nav-link" href="#how" onClick={() => setMenuOpen(false)}>How it works</a>
+            <a className="sato-nav-link" href="#why" onClick={() => setMenuOpen(false)}>Architecture</a>
+            <a className="sato-nav-link" href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
+            <a className="sato-nav-link" href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
           </div>
-          <button className="iris-burger" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+
+          <button className="sato-burger" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>
+            {menuOpen ? <X size={19} /> : <Menu size={19} />}
           </button>
-          <a className="iris-btn iris-btn-dark iris-nav-cta" href="#get" {...magnet}>Get early access <ArrowRight size={15} /></a>
+
+          <a className="sato-btn sato-btn-primary sato-nav-cta" href="#get">
+            Early access <ArrowRight size={14} />
+          </a>
         </nav>
       </div>
 
-      {/* ---------- hero ---------- */}
-      <header
-        className="iris-hero"
-        id="top"
-        ref={heroRef}
-        onMouseMove={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setMouse({ x: (e.clientX - r.left) / r.width - 0.5, y: (e.clientY - r.top) / r.height - 0.5 });
-        }}
-      >
-        <div className="iris-clouds" aria-hidden="true">
-          <motion.i className="iris-cloud c1" style={reduce ? undefined : { y: cloudA }} />
-          <motion.i className="iris-cloud c2" style={reduce ? undefined : { y: cloudB }} />
-          <i className="iris-cloud c3" /><i className="iris-cloud c4" /><i className="iris-cloud c5" />
-        </div>
-        <div className="iris-mist" aria-hidden="true" />
-        <div className="iris-hero-inner">
-          <h1 aria-label="Bitcoin money that feels human.">
-            {(["Bitcoin money", "that feels human."] as const).map((line, i) => (
-              <span className="iris-line" aria-hidden="true" key={line}>
-                <motion.span
-                  className="iris-line-in"
-                  initial={reduce ? { y: 0 } : { y: "112%" }}
-                  animate={{ y: 0 }}
-                  transition={{ duration: 0.9, delay: i * 0.1, ease: [0.23, 1, 0.32, 1] }}
-                >
-                  {line}
-                </motion.span>
-              </span>
-            ))}
-          </h1>
-          <motion.p
-            className="iris-hero-sub"
-            initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.12 }}
-          >
-            Send to @usernames, earn on your balance, and cash out to local
-            currency — one simple app for everyday money on Bitcoin.
-          </motion.p>
+      {/* ---------- SECTION 1: OBSIDIAN HERO + INTERACTIVE STAGE ---------- */}
+      <header className="sato-hero">
+        <div className="sato-hero-grid" aria-hidden="true" />
+        <div className="sato-hero-glow" aria-hidden="true" />
+
+        <div className="sato-hero-inner">
           <motion.div
-            className="iris-hero-ctas"
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.28 }}
+            className="sato-status-pill"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           >
-            <motion.a className="iris-btn iris-btn-dark" href="#get" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Get early access <motion.span animate={{ x: 0 }} whileHover={{ x: 4 }}><ArrowRight size={16} /></motion.span></motion.a>
-            <motion.a className="iris-btn iris-btn-light" href="https://testnet.satoxbt.com/app" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Try the testnet app <ArrowUpRight size={16} /></motion.a>
+            <ThinkingOrb color="#4ade80" />
+            <span>STACKS L2 TESTNET</span>
+            <span className="sato-pill-sep">·</span>
+            <span className="sato-pill-dim">GASLESS sBTC RAILS</span>
           </motion.div>
-          <div className="iris-microcopy">Free to join · One useful email · No noise</div>
-          <div className="iris-waitrow">
-            <span className="iris-avatars" aria-hidden="true">
-              <span style={{ background: "#f15a24" }}>SA</span>
-              <span style={{ background: "#1d7a4c" }}>AM</span>
-              <span style={{ background: "#111925" }}>JK</span>
-              <span style={{ background: "#2e6bf0" }}>+</span>
-            </span>
-            <span>{reduce ? "2,400" : <CountUp to={2400} />}+ on the waitlist</span>
-            <button
-              className="iris-share"
-              onClick={() => {
-                const url = window.location.href;
-                if (navigator.share) navigator.share({ title: "Sato", url }).catch(() => {});
-                else { navigator.clipboard?.writeText(url).catch(() => {}); heroWait.setEmail(""); }
-              }}
+
+          <h1 aria-label="Bitcoin money that feels human.">
+            <RiseLines
+              lines={[
+                "Bitcoin money",
+                <>that <span className="sato-hero-accent">feels human.</span></>,
+              ]}
+            />
+          </h1>
+
+          <motion.p
+            className="sato-hero-sub"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
+          >
+            Send sBTC to @usernames with zero gas complexity, earn yield automatically on your balance,
+            and cash out to local bank rails — one non-custodial app built on Bitcoin.
+          </motion.p>
+
+          <motion.div
+            className="sato-hero-actions"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.24, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <motion.a
+              className="sato-btn sato-btn-primary sato-btn-lg"
+              href="#get"
+              whileTap={{ scale: 0.96 }}
+              whileHover={{ y: -2 }}
             >
-              Share the waitlist
-            </button>
-          </div>
+              Get early access <ArrowRight size={16} />
+            </motion.a>
+            <motion.a
+              className="sato-btn sato-btn-ghost sato-btn-lg"
+              href="https://testnet.satoxbt.com/app"
+              target="_blank"
+              rel="noopener noreferrer"
+              whileTap={{ scale: 0.96 }}
+              whileHover={{ y: -2 }}
+            >
+              Launch testnet app <ArrowUpRight size={16} />
+            </motion.a>
+          </motion.div>
+
+          <motion.div
+            className="sato-hero-meta"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.35 }}
+          >
+            <span>NON-CUSTODIAL ENCLAVE</span>
+            <i>·</i>
+            <span>ZERO STX REQUIRED</span>
+            <i>·</i>
+            <span>2,400+ ON WAITLIST</span>
+          </motion.div>
         </div>
 
-        {/* phones */}
-        <motion.div className="iris-phones" style={reduce ? undefined : { y: phoneSink }}>
-          <motion.div
-            className="iris-phone left"
-            animate={reduce ? undefined : { y: [0, -5, 0] }}
-            transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
-            style={reduce || isMobile ? undefined : { x: mouse.x * -10, rotate: -2.5 + mouse.x * 1.4 }}
-          >
-            <div className="iris-screen">
-              <div className="iris-notch"><i /></div>
-              <div className="iris-screen-body">
-                <div className="iris-screen-top"><small>SATO · PREVIEW</small><span className="iris-live"><ThinkingOrb />LIVE DEMO</span></div>
-                <h3 className="iris-send-title">Send to<br />anyone.</h3>
-                <div className="iris-field">
-                  <label>RECIPIENT</label>
-                  <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="@username" aria-label="Recipient username" />
-                </div>
-                <div className="iris-field">
-                  <div className="iris-amount-row">
-                    <strong>{satAmt.toFixed(3)} <span style={{ fontSize: 13, color: "#8c98aa" }}>sBTC</span></strong>
-                    <small>≈ ${fiat.toLocaleString(undefined, { maximumFractionDigits: 2 })}</small>
-                  </div>
-                  <input
-                    className="iris-range" type="range" min={0.001} max={0.05} step={0.001}
-                    value={satAmt} onChange={(e) => { setSatAmt(Number(e.target.value)); setSendState("idle"); }}
-                    aria-label="Amount in sBTC"
-                  />
-                </div>
-                <div className="iris-fee-row"><span>Fee $0.40 · shown upfront</span><span>≈ 10 sec</span></div>
-                <AnimatePresence mode="wait">
-                  {sendState === "done" ? (
-                    <motion.div
-                      key="done" className="iris-receipt"
-                      style={{ position: "relative" }}
-                      initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-                    >
-                      <span className="ri"><Check size={15} color="#fff" /></span>
-                      <span><strong>Sent to {to || "@amani"}</strong><small>Receipt saved · preview</small></span>
-                      <b>{satAmt.toFixed(3)} ₿</b>
-                      {!reduce && (
-                        <span className="iris-burst" key={burstId} aria-hidden="true">
-                          {burstParts.map((p, i) => (
-                            <motion.i
-                              key={i}
-                              initial={{ x: 0, y: 0, opacity: 1, rotate: 0, scale: 1 }}
-                              animate={{ x: p.x, y: p.y, opacity: 0, rotate: p.r, scale: 0.6 }}
-                              transition={{ duration: 0.9, ease: "easeOut" }}
-                              style={{ background: p.c, width: p.s, height: p.s }}
-                            />
-                          ))}
-                        </span>
-                      )}
-                    </motion.div>
-                  ) : (
-                    <motion.button
-                      key="btn" className="iris-review-btn" onClick={reviewSend} disabled={sendState === "sending"}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      {sendState === "sending" ? "Confirming on Stacks…" : <>Review payment <ArrowRight size={15} /></>}
-                    </motion.button>
-                  )}
-                </AnimatePresence>
-                {sendState === "done" && (
-                  <button className="iris-share" style={{ color: "#6b6b6b", textDecoration: "underline" }} onClick={() => setSendState("idle")}>
-                    Send another
-                  </button>
-                )}
-                <div className="iris-preview-tag">INTERACTIVE PREVIEW — TRY ME</div>
+        {/* ---------- INTERACTIVE PRODUCT STAGE (liquid.trade / pay.ethena.fi / aave.com) ---------- */}
+        <motion.div
+          className="sato-stage-wrap"
+          initial={{ opacity: 0, y: 36 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="sato-stage beam-border" {...spotlight}>
+            <div className="sato-stage-bar">
+              <div className="sato-stage-brand">
+                <span className="sato-stage-dot" />
+                <span>SATO TERMINAL · INTERACTIVE PREVIEW</span>
+              </div>
+              <div className="sato-stage-pills">
+                <span>SPONSOR POOL: ACTIVE</span>
+                <span className="ok">sBTC / USD ${BTC_USD.toLocaleString()}</span>
               </div>
             </div>
-          </motion.div>
 
-          <motion.div
-            className="iris-phone right"
-            animate={reduce ? undefined : { y: [0, 5, 0] }}
-            transition={{ duration: 7.2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
-            style={reduce || isMobile ? undefined : { x: mouse.x * 10, rotate: 2.5 + mouse.x * 1.4 }}
-          >
-            <div className="iris-screen">
-              <div className="iris-notch"><i /></div>
-              <div className="iris-screen-body">
-                <div className="iris-screen-top"><small>PORTFOLIO · SAM</small><span className="iris-live"><ThinkingOrb />EARNING</span></div>
-                <div className="iris-balance-card">
-                  <small>TOTAL BALANCE</small>
-                  <div className="big">${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  <div className="sub"><span>₿ 0.03812</span><span className="pos">+$3.12 this week</span></div>
-                  <svg className="iris-spark" viewBox="0 0 300 54" width="100%" height="44" aria-hidden="true">
-                    <path d="M0 44 C30 43 38 30 62 34 S92 42 116 28 S146 30 168 22 S198 30 220 16 S256 20 300 4" fill="none" stroke="currentColor" strokeWidth="2.5" />
-                  </svg>
+            <div className="sato-stage-grid">
+              {/* Column 1: Interactive Gasless Send */}
+              <div className="sato-pane">
+                <div className="sato-pane-head">
+                  <span className="sato-pane-kicker">01 · INSTANT TRANSFER</span>
+                  <span className="sato-pane-chip ok"><ThinkingOrb color="#4ade80" /> LIVE</span>
                 </div>
-                <div className="iris-chip-row" role="tablist" aria-label="Phone preview views">
-                  {phoneViews.map((v, i) => (
+
+                <div className="sato-input-box">
+                  <label htmlFor="hero-to">RECIPIENT HANDLE</label>
+                  <div className="sato-input-row">
+                    <AtSign size={14} />
+                    <input
+                      id="hero-to"
+                      value={to}
+                      onChange={(e) => { setTo(e.target.value); setSendStage("idle"); }}
+                      placeholder="@amani"
+                    />
+                  </div>
+                </div>
+
+                <div className="sato-quick-handles">
+                  {["@amani", "@corner-cafe", "@mama-nkechi"].map((h) => (
                     <button
-                      key={v.chip[0]}
-                      role="tab"
-                      aria-selected={phoneTab === i}
-                      className={phoneTab === i ? "iris-chip active" : "iris-chip"}
-                      onClick={() => setPhoneTab(i)}
+                      key={h}
+                      type="button"
+                      className={to === h ? "sato-qh active" : "sato-qh"}
+                      onClick={() => { setTo(h); setSendStage("idle"); }}
                     >
-                      {phoneTab === i && (
-                        <motion.span
-                          layoutId="phone-tab-pill"
-                          className="iris-chip-bg"
-                          transition={{ type: "spring", stiffness: 440, damping: 32 }}
-                        />
-                      )}
-                      <span className="iris-chip-txt">
-                        <b>{v.chip[0]}</b><small>{v.chip[1]}</small>
-                      </span>
+                      {h}
                     </button>
                   ))}
                 </div>
+
+                <div className="sato-input-box">
+                  <div className="sato-amt-top">
+                    <label>AMOUNT</label>
+                    <span className="sato-fiat-eq">≈ ${fiatUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })} · ₦{fiatNgn.toLocaleString()}</span>
+                  </div>
+                  <div className="sato-amt-val">
+                    <strong>{satAmt.toFixed(3)}</strong>
+                    <span>sBTC</span>
+                  </div>
+                  <input
+                    className="sato-slider"
+                    type="range"
+                    min={0.001}
+                    max={0.05}
+                    step={0.001}
+                    value={satAmt}
+                    onChange={(e) => { setSatAmt(Number(e.target.value)); setSendStage("idle"); }}
+                    aria-label="Amount in sBTC"
+                  />
+                </div>
+
+                <div className="sato-quote-line">
+                  <span>Network gas fee</span>
+                  <strong className="ok">$0.00 · Sponsored</strong>
+                </div>
+
                 <AnimatePresence mode="wait">
-                  <motion.div
-                    key={phoneTab}
-                    initial={{ opacity: 0, x: 14 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -14 }}
-                    transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
-                    style={{ display: "flex", flexDirection: "column", gap: 10 }}
-                  >
-                    {phoneViews[phoneTab].rows.map((r) => (
-                      <div className="iris-txn" key={r.t}>
-                        <span className="ti" style={{ background: `${r.bg}14`, color: r.bg }}><r.icon size={15} /></span>
-                        <span><strong>{r.t}</strong><small>{r.s}</small></span>
+                  {sendStage === "done" ? (
+                    <motion.div
+                      key="settled"
+                      className="sato-settled-box"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      <span className="sato-settled-ic"><Check size={14} /></span>
+                      <div>
+                        <strong>Sent {satAmt.toFixed(3)} sBTC to {to || "@amani"}</strong>
+                        <small>TX #8F4A · Receipt saved for both sides</small>
                       </div>
-                    ))}
-                  </motion.div>
+                      <button type="button" className="sato-reset-btn" onClick={() => setSendStage("idle")}>Reset</button>
+                    </motion.div>
+                  ) : (
+                    <motion.button
+                      key="cta"
+                      type="button"
+                      className="sato-send-btn"
+                      onClick={triggerSend}
+                      disabled={sendStage !== "idle"}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      {sendStage === "signing"
+                        ? "Signing in hardware enclave…"
+                        : sendStage === "sponsoring"
+                          ? "Co-signing gasless tx…"
+                          : <>Confirm & send {satAmt.toFixed(3)} sBTC <ArrowRight size={15} /></>}
+                    </motion.button>
+                  )}
                 </AnimatePresence>
-                <div className="iris-preview-tag">SEND · EARN · CASH OUT</div>
+              </div>
+
+              {/* Column 2: Live Yield & Balance Curve */}
+              <div className="sato-pane sato-pane-center">
+                <div className="sato-pane-head">
+                  <span className="sato-pane-kicker">02 · sBTC YIELD VAULT v3</span>
+                  <div className="sato-tf-tabs" role="tablist" aria-label="Yield timeframe">
+                    {(["1W", "1M", "1Y"] as const).map((tf) => (
+                      <button
+                        key={tf}
+                        type="button"
+                        role="tab"
+                        aria-selected={timeframe === tf}
+                        className={timeframe === tf ? "sato-tf active" : "sato-tf"}
+                        onClick={() => setTimeframe(tf)}
+                      >
+                        {timeframe === tf && (
+                          <motion.span
+                            layoutId="hero-tf-pill"
+                            className="sato-tf-bg"
+                            transition={{ type: "spring", stiffness: 460, damping: 32 }}
+                          />
+                        )}
+                        <span>{tf}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="sato-bal-block">
+                  <span className="sato-bal-label">TOTAL LIQUID BALANCE</span>
+                  <div className="sato-bal-num">
+                    ${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="sato-bal-sub">
+                    <span>0.03812 sBTC</span>
+                    <span className="ok">{curve.delta}</span>
+                  </div>
+                </div>
+
+                <div className="sato-chart-wrap">
+                  <svg viewBox="0 0 360 90" width="100%" height="96" preserveAspectRatio="none" aria-hidden="true">
+                    <defs>
+                      <linearGradient id="satoYieldArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f15a24" stopOpacity="0.32" />
+                        <stop offset="100%" stopColor="#f15a24" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    <motion.path
+                      key={`area-${timeframe}`}
+                      d={curve.area}
+                      fill="url(#satoYieldArea)"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.45 }}
+                    />
+                    <motion.path
+                      key={`line-${timeframe}`}
+                      d={curve.path}
+                      fill="none"
+                      stroke="#f15a24"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      initial={{ pathLength: 0.2, opacity: 0.5 }}
+                      animate={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                    />
+                  </svg>
+                </div>
+
+                <div className="sato-vault-stats">
+                  <div>
+                    <span>VAULT APY</span>
+                    <strong className="ok">+4.80%</strong>
+                  </div>
+                  <div>
+                    <span>LOCKUP</span>
+                    <strong>None · Liquid</strong>
+                  </div>
+                  <div>
+                    <span>CONTRACT</span>
+                    <strong>sato-yield-v3</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Column 3: Settlement Feed & Local Cashout */}
+              <div className="sato-pane">
+                <div className="sato-pane-head">
+                  <span className="sato-pane-kicker">03 · SETTLEMENT LEDGER</span>
+                  <span className="sato-pane-chip">REALTIME</span>
+                </div>
+
+                <div className="sato-ledger-list">
+                  {[
+                    { title: "Sent to @amani", meta: "0.012 sBTC · Gasless", status: "SETTLED", ok: true },
+                    { title: "Yield epoch · Vault v3", meta: "+0.000048 sBTC", status: "CREDITED", ok: true },
+                    { title: "EKEDC Power · Meter", meta: "₦15,000 · VTPass", status: "VERIFIED", ok: true },
+                    { title: "GTBank ····4219", meta: "$500.00 · HMAC Quote", status: "LOCKED 30S", ok: false },
+                  ].map((row) => (
+                    <div className="sato-ledger-row" key={row.title}>
+                      <div>
+                        <strong>{row.title}</strong>
+                        <small>{row.meta}</small>
+                      </div>
+                      <span className={row.ok ? "sato-status-tag ok" : "sato-status-tag"}>{row.status}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="sato-rail-footer">
+                  <span>LOCAL RAILS</span>
+                  <strong>NGN · USD · INSTANT PAYOUT</strong>
+                </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         </motion.div>
+
+        {/* ---------- edge-faded live marquee (pay.ethena.fi) ---------- */}
+        <div className="sato-ticker" aria-label="Live protocol telemetry">
+          <div className="sato-ticker-track">
+            {[...tickerItems, ...tickerItems].map((item, idx) => (
+              <div className="sato-ticker-item" key={idx}>
+                <span className="sato-ticker-tag">{item.tag}</span>
+                <span className="sato-ticker-text">{item.text}</span>
+                <span className="sato-ticker-meta">{item.meta}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </header>
 
-      {/* ---------- live settlement marquee (pay.ethena.fi pattern) ---------- */}
-      <div className="iris-ticker-strip" aria-label="Live protocol telemetry">
-        <div className="iris-ticker-track">
-          {[...tickerItems, ...tickerItems].map((item, idx) => (
-            <div className="iris-ticker-item" key={idx}>
-              <span className="iris-ticker-tag">{item.tag}</span>
-              <span className="iris-ticker-text">{item.text}</span>
-              <span className="iris-ticker-meta">{item.meta}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ---------- how it works ---------- */}
+      {/* ---------- SECTION 2: WARM EDITORIAL PAPER — HOW IT WORKS (jeton / increase) ---------- */}
       <section
-        className="iris-section iris-how" id="how"
+        className="sato-band sato-band-paper"
+        id="how"
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
       >
-        <div className="iris-reveal">
-          <span className="iris-eyebrow"><Zap size={13} /> How it works</span>
-          <AnimatePresence mode="wait">
-            <motion.div key={active.key} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.32 }}>
-              <h2>{active.headline}</h2>
-              <p className="iris-body">{active.body}</p>
-            </motion.div>
-          </AnimatePresence>
-          <div className="iris-carousel-ctrl">
-            <div className="iris-step-tabs" role="tablist" aria-label="How Sato works steps">
+        <div className="sato-container sato-how-grid">
+          <div className="sato-how-copy">
+            <span className="sato-eyebrow">HOW IT WORKS</span>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={active.key}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <h2>{active.headline}</h2>
+                <p className="sato-body">{active.body}</p>
+              </motion.div>
+            </AnimatePresence>
+
+            <div className="sato-step-bar" role="tablist" aria-label="Product workflow steps">
               {slides.map((s, i) => (
                 <button
                   key={s.key}
+                  type="button"
                   role="tab"
                   aria-selected={i === slide}
-                  className={i === slide ? "iris-step-tab active" : "iris-step-tab"}
+                  className={i === slide ? "sato-step-btn active" : "sato-step-btn"}
                   onClick={() => setSlide(i)}
                 >
                   {i === slide && (
                     <motion.span
                       layoutId="how-step-pill"
-                      className="iris-step-tab-bg"
-                      transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                      className="sato-step-btn-bg"
+                      transition={{ type: "spring", stiffness: 440, damping: 32 }}
                     />
                   )}
-                  <span className="iris-step-tab-txt">
-                    <em>0{i + 1}</em> {s.pill}
+                  <span className="sato-step-btn-txt">
+                    <em>{s.num}</em> {s.pill}
                   </span>
                 </button>
               ))}
             </div>
-            <div className="iris-arrow-group">
-              <button className="iris-arrow" aria-label="Previous step" onClick={() => setSlide((s) => (s + slides.length - 1) % slides.length)}>←</button>
-              <button className="iris-arrow" aria-label="Next step" onClick={() => setSlide((s) => (s + 1) % slides.length)}>→</button>
-            </div>
-          </div>
-          {!reduce && (
-            <span className="iris-auto" aria-hidden="true">
-              <motion.i
-                key={slide + (paused ? "-p" : "-r")}
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: paused ? 0 : 1 }}
-                transition={paused ? { duration: 0.2 } : { duration: 5.5, ease: "linear" }}
-              />
-            </span>
-          )}
-        </div>
-        <div className="iris-reveal">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={active.key}
-              className="iris-how-card"
-              style={{ background: active.grad }}
-              initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -28 }}
-              transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
-            >
-              <div className="iris-how-top">
-                <span className="iris-how-badge"><ThinkingOrb /> LIVE SETTLEMENT FLOW</span>
-                <span className="iris-step-tag">0{slide + 1} / 03 · {active.pill.toUpperCase()}</span>
+
+            {!reduce && (
+              <div className="sato-auto-bar" aria-hidden="true">
+                <motion.i
+                  key={slide + (paused ? "-p" : "-r")}
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: paused ? 0 : 1 }}
+                  transition={paused ? { duration: 0.2 } : { duration: 6, ease: "linear" }}
+                />
               </div>
-              <div
-                className="iris-glass"
-                onMouseMove={(e) => {
-                  const el = e.currentTarget;
-                  const r = el.getBoundingClientRect();
-                  el.style.setProperty("--gx", `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`);
-                  el.style.setProperty("--gy", `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%`);
-                }}
+            )}
+          </div>
+
+          <div className="sato-how-stage">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={active.key}
+                className="sato-how-card"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }}
+                transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
               >
-                <div className="iris-conn-row">
-                  <span className="iris-conn-pill">{active.conn[0]}</span>
-                  <span className="iris-conn-link" />
-                  <span className="iris-conn-ic" style={{ background: "#f15a24" }}><ArrowLeftRight size={14} /></span>
-                  <span className="iris-conn-link" />
-                  <span className="iris-conn-pill ok">{active.conn[1]}</span>
+                <div className="sato-how-card-head">
+                  <span className="sato-how-live"><ThinkingOrb color="#16a34a" /> {active.badge}</span>
+                  <span className="sato-how-idx">{active.num} / 03</span>
                 </div>
-                {active.docs.map((d) => (
-                  <div className="iris-doc" key={d.title}>
-                    <span className="di" style={{ background: `${d.bg}12`, color: d.bg }}><d.icon size={16} /></span>
-                    <span><strong>{d.title}</strong><small>{d.sub}</small></span>
-                  </div>
-                ))}
-                <div className="iris-feed">
-                  {active.feed.map((f) => (
-                    <div className="iris-feed-row" key={f.text + f.time}>
-                      <span className="fdot" style={{ background: f.dot }} />{f.text}<time>{f.time}</time>
+
+                <div className="sato-route-row">
+                  <span className="sato-route-node">{active.conn[0]}</span>
+                  <span className="sato-route-line" />
+                  <span className="sato-route-mid"><ArrowLeftRight size={14} /></span>
+                  <span className="sato-route-line" />
+                  <span className="sato-route-node accent">{active.conn[1]}</span>
+                </div>
+
+                <div className="sato-doc-stack">
+                  {active.docs.map((d) => (
+                    <div className="sato-doc-row" key={d.title}>
+                      <span className="sato-doc-ic" style={{ background: `${d.accent}12`, color: d.accent }}>
+                        <d.icon size={16} />
+                      </span>
+                      <div>
+                        <strong>{d.title}</strong>
+                        <small>{d.sub}</small>
+                      </div>
                     </div>
                   ))}
                 </div>
+
+                <div className="sato-feed-list">
+                  {active.feed.map((f) => (
+                    <div className="sato-feed-item" key={f.text + f.time}>
+                      <span className="sato-feed-dot" style={{ background: f.dot }} />
+                      <span>{f.text}</span>
+                      <time>{f.time}</time>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- SECTION 3: OBSIDIAN DARK — INTERACTIVE BENTO ARCHITECTURE ---------- */}
+      <section className="sato-band sato-band-dark" id="why">
+        <div className="sato-container">
+          <div className="sato-section-head">
+            <div>
+              <span className="sato-eyebrow on-dark">THE OPERATING LAYER</span>
+              <h2><RiseLines lines={["Everyday money,", "on Bitcoin rails."]} /></h2>
+            </div>
+            <p className="sato-body on-dark">
+              Every module states its cost, rate lock, and settlement status before you confirm — engineered for real payments, not crypto tutorials.
+            </p>
+          </div>
+
+          <div className="sato-filter-bar" role="tablist" aria-label="Filter product modules">
+            {(["all", "send", "earn", "cashout"] as const).map((f) => {
+              const isAct = bentoFilter === f;
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  role="tab"
+                  aria-selected={isAct}
+                  className={isAct ? "sato-filter-btn active" : "sato-filter-btn"}
+                  onClick={() => setBentoFilter(f)}
+                >
+                  {isAct && (
+                    <motion.span
+                      layoutId="bento-filter-pill"
+                      className="sato-filter-bg"
+                      transition={{ type: "spring", stiffness: 440, damping: 32 }}
+                    />
+                  )}
+                  <span className="sato-filter-txt">
+                    {f === "all" ? "All modules" : f === "send" ? "Send & Receipts" : f === "earn" ? "Yield Vault" : "Cash out & L2"}
+                    <em>{f === "all" ? 5 : f === "send" ? 3 : f === "earn" ? 1 : 2}</em>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="sato-bento">
+            {/* Card 1: Interactive @username Directory */}
+            <div className={`sato-tile tall ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...spotlight}>
+              <div className="sato-tile-top">
+                <span className="sato-tile-tag">SEND · DIRECTORY</span>
+                <span className="sato-tile-ic accent"><AtSign size={16} /></span>
               </div>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </section>
+              <h3>Send to @anyone in seconds.</h3>
+              <p>Search verified handles registered in sato-names. Click any contact to load them into the live terminal above.</p>
 
-      {/* ---------- integrations arc ---------- */}
-      <section className="iris-section iris-arc" id="flow" ref={arcRef}>
-        <div className="iris-orbit" ref={orbitRef} aria-hidden="true">
-          <div className="iris-orbit-rings" />
-          <motion.div className="iris-orbit-scrub" style={{ opacity: useTransform(arcProgress, [0, 0.5, 1], [0, 1, 0]) }} />
-          {orbs.map((o, i) => (
-            <Bubble key={o.label} o={o} i={i} total={orbs.length} active={!reduce && !isMobile && (i === 0 || i === 2 || i === 4)} disabled={isMobile} reduce={!!reduce} />
-          ))}
-        </div>
-        <motion.div
-          className="iris-orbit-progress"
-          style={{ scaleX: arcProgress, opacity: useTransform(arcProgress, [0, 0.1, 0.9, 1], [0, 1, 1, 0]) }}
-          aria-hidden="true"
-        />
-        <div className="iris-arc-copy iris-reveal">
-          <span className="iris-eyebrow"><Globe size={13} /> The whole flow</span>
-          <h2><RiseLines lines={["One app for", "the whole flow."]} /></h2>
-          <p className="iris-body" style={{ marginInline: "auto" }}>
-            Bitcoin in, friends paid, balance earning, money back at your bank.
-            Sato connects the pieces so you never touch an address or a second app.
-          </p>
-          <motion.a className="iris-btn iris-btn-dark" href="#get" whileTap={{ scale: 0.94 }} whileHover={{ scale: 1.03, y: -3 }} transition={{ type: "spring", stiffness: 420, damping: 16 }}>Start with Sato <ArrowRight size={16} /></motion.a>
-          <p className="iris-drag-hint">INTERACTIVE ARCH · DRAG ANY NODE</p>
-        </div>
-      </section>
-
-      {/* ---------- bento ---------- */}
-      <section className="iris-section" id="why">
-        <div className="iris-bento-head">
-          <div className="iris-reveal">
-            <span className="iris-eyebrow"><Sparkles size={13} /> The operating layer</span>
-            <h2><RiseLines lines={["Everyday money,", "on Bitcoin rails."]} /></h2>
-            <p className="iris-body">Three jobs, one calm surface. Everything states its cost and status before you confirm — no tutorials required.</p>
-          </div>
-          <div className="iris-mini-cards iris-reveal">
-            <div className="iris-mini">
-              <span className="iris-mini-kicker">01 · HUMAN DIRECTORY</span>
-              <strong>No addresses, ever</strong>
-              <p>Pay people and shops by @name or QR. Copy-paste is not a feature here.</p>
-            </div>
-            <div className="iris-mini">
-              <span className="iris-mini-kicker">02 · DETERMINISTIC QUOTES</span>
-              <strong>Fees stated upfront</strong>
-              <p>Amount, fee, arrival estimate — all visible before your thumb moves.</p>
-            </div>
-          </div>
-        </div>
-        <div className="iris-bento-filter iris-reveal" role="tablist" aria-label="Filter features">
-          {(["all", "send", "earn", "cashout"] as const).map((f) => {
-            const isAct = bentoFilter === f;
-            return (
-              <button key={f} role="tab" aria-selected={isAct} className={isAct ? "active" : ""} onClick={() => setBentoFilter(f)}>
-                {isAct && (
-                  <motion.span
-                    layoutId="bento-filter-pill"
-                    className="iris-flt-bg"
-                    transition={{ type: "spring", stiffness: 440, damping: 32 }}
+              <div className="sato-dir-box">
+                <label className="sato-dir-search">
+                  <AtSign size={14} />
+                  <input
+                    value={dirQuery}
+                    onChange={(e) => setDirQuery(e.target.value)}
+                    placeholder="Filter @amani, @cafe, @mama…"
+                    aria-label="Search Sato usernames"
                   />
+                </label>
+                <div className="sato-dir-list">
+                  {dirMatches.length === 0 ? (
+                    <span className="sato-dir-empty">No matches — invite them to claim a @name.</span>
+                  ) : (
+                    dirMatches.map((u) => (
+                      <button
+                        key={u.name}
+                        type="button"
+                        className={picked === u.name ? "sato-dir-row picked" : "sato-dir-row"}
+                        onClick={() => pickRecipient(u.name)}
+                      >
+                        <span className="sato-dir-ava" style={{ background: u.color }}>{u.name.slice(1, 3).toUpperCase()}</span>
+                        <span className="sato-dir-meta">
+                          <strong>{u.name}</strong>
+                          <small>{u.role}</small>
+                        </span>
+                        <span className="sato-dir-act">{picked === u.name ? "Loaded" : "Select"}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+                {picked && (
+                  <a href="#top" className="sato-dir-jump">
+                    {picked} loaded in terminal — test send ↑
+                  </a>
                 )}
-                <span className="iris-flt-txt">
-                  {f === "all" ? "All modules" : f === "send" ? "Send & Receipts" : f === "earn" ? "Earn Yield" : "Cash out & Rails"}{" "}
-                  <span className="flt-count">{f === "all" ? 5 : f === "send" ? 3 : f === "earn" ? 1 : 2}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="iris-bento-grid">
-          <div className={`iris-card peach tall iris-reveal ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...tilt}>
-            <div className="iris-card-top">
-              <span className="iris-tag">Send · Directory</span>
-              <span className="iris-ic"><AtSign size={17} /></span>
-            </div>
-            <h3>Send to @anyone in seconds.</h3>
-            <p>Type a name, set an amount, see both currencies. The receipt both sides can read.</p>
-            <div className="iris-card-mock">
-              <label className="iris-search">
-                <AtSign size={14} />
-                <input
-                  value={dirQuery}
-                  onChange={(e) => setDirQuery(e.target.value)}
-                  placeholder="Search @mama, @cafe, @amani…"
-                  aria-label="Search usernames"
-                />
-              </label>
-              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                {dirMatches.length === 0 && (
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#6b6b6b" }}>No matches — invite them to Sato.</span>
-                )}
-                {dirMatches.map((u) => (
-                  <button
-                    key={u.name}
-                    className={picked === u.name ? "iris-user-pill picked" : "iris-user-pill"}
-                    onClick={() => pickRecipient(u.name)}
-                  >
-                    <i style={{ background: u.color }}>{u.name.slice(1, 3).toUpperCase()}</i>{u.name}
-                  </button>
-                ))}
               </div>
-              {picked && (
-                <p className="iris-pick-hint">
-                  {picked} loaded — <a href="#top">test in the live phone demo ↑</a>
-                </p>
+            </div>
+
+            {/* Middle Stack: Clarity + Receipts */}
+            <div className="sato-tile-stack">
+              <div className={`sato-tile ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...spotlight}>
+                <div className="sato-tile-top">
+                  <span className="sato-tile-tag">CLARITY</span>
+                  <span className="sato-tile-ic"><Receipt size={16} /></span>
+                </div>
+                <h3>Costs before confirm.</h3>
+                <p>Network fee, sponsor coverage, and 30-second rate lock — zero surprises.</p>
+                <div className="sato-kv-grid">
+                  <div><span>GAS FEE</span><strong className="ok">$0.00 Sponsored</strong></div>
+                  <div><span>RATE LOCK</span><strong>00:30 HMAC</strong></div>
+                </div>
+              </div>
+
+              <div className={`sato-tile ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...spotlight}>
+                <div className="sato-tile-top">
+                  <span className="sato-tile-tag">RECEIPTS</span>
+                  <span className="sato-tile-ic"><Check size={16} /></span>
+                </div>
+                <h3>Both sides see done.</h3>
+                <p>Sender and merchant share one verifiable on-chain confirmation.</p>
+                <div className="sato-proof-bar">
+                  <span><i>✓</i> @you</span>
+                  <b />
+                  <em>TX #8F4A · SETTLED</em>
+                  <b />
+                  <span><i>✓</i> @cafe</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Interactive Yield Calculator (titan.com / aave.com + border beam) */}
+            <div className={`sato-tile tall beam-border ${bentoFilter !== "all" && bentoFilter !== "earn" ? "dimmed" : ""}`} {...spotlight}>
+              <div className="sato-tile-top">
+                <span className="sato-tile-tag accent">EARN · sato-yield-v3</span>
+                <span className="sato-tile-ic accent"><PiggyBank size={16} /></span>
+              </div>
+              <h3>Balance that compounds quietly.</h3>
+              <p>Model your projected annual yield on liquid sBTC. No staking lockups or external bridges.</p>
+
+              <div className="sato-calc-box">
+                <div className="sato-calc-row">
+                  <span>DEPOSIT AMOUNT</span>
+                  <strong>{calcBtc.toFixed(2)} sBTC</strong>
+                </div>
+                <input
+                  className="sato-slider"
+                  type="range"
+                  min={0.01}
+                  max={1.0}
+                  step={0.01}
+                  value={calcBtc}
+                  onChange={(e) => setCalcBtc(Number(e.target.value))}
+                  aria-label="Simulated sBTC deposit"
+                />
+                <div className="sato-calc-out">
+                  <div>
+                    <span>EST. 1Y YIELD (+4.8% APY)</span>
+                    <strong className="ok">+{projectedYieldBtc.toFixed(4)} sBTC</strong>
+                  </div>
+                  <div className="right">
+                    <span>USD EQUIVALENT</span>
+                    <strong>+${projectedYieldUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
+                  </div>
+                </div>
+                <div className="sato-calc-note">Illustrative preview · Live vault mechanics at launch</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom 2-column Row */}
+          <div className="sato-bento-row">
+            <div className={`sato-tile row ${bentoFilter !== "all" && bentoFilter !== "cashout" ? "dimmed" : ""}`} {...spotlight}>
+              <span className="sato-tile-ic"><Banknote size={17} /></span>
+              <div className="sato-tile-row-body">
+                <div className="sato-tile-row-head">
+                  <span className="sato-tile-tag">CASH OUT & BILLS</span>
+                  <span className="sato-rail-meta">NGN · USD · VTPASS</span>
+                </div>
+                <h3>Back to your local bank.</h3>
+                <p>Convert sBTC directly to bank accounts or pay electricity and airtime with idempotent verification.</p>
+              </div>
+            </div>
+
+            <div className={`sato-tile row ${bentoFilter !== "all" && bentoFilter !== "cashout" ? "dimmed" : ""}`} {...spotlight}>
+              <span className="sato-tile-ic"><ShieldCheck size={17} /></span>
+              <div className="sato-tile-row-body">
+                <div className="sato-tile-row-head">
+                  <span className="sato-tile-tag">FOUNDATION</span>
+                  <span className="sato-rail-meta">STACKS L2 · SIP-010</span>
+                </div>
+                <h3>Settled on Bitcoin finality.</h3>
+                <p>Non-custodial Clarity smart contracts with verifiable on-chain state and zero custodial balance sheets.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- SECTION 4: WARM EDITORIAL PAPER — TRUST & OWNERSHIP (pay.ethena.fi / topology.vc) ---------- */}
+      <section className="sato-band sato-band-paper" id="trust">
+        <div className="sato-container">
+          <div className="sato-trust-head">
+            <span className="sato-eyebrow">SECURITY BY ARCHITECTURE</span>
+            <h2><RiseLines lines={["Your money stays yours.", "Always."]} /></h2>
+            <p className="sato-body">
+              Sato is non-custodial software, not a bank. We never hold user balances or touch private keys.
+            </p>
+          </div>
+
+          <div className="sato-pillars">
+            {trustPillars.map((p) => (
+              <div className="sato-pillar" key={p.num}>
+                <div className="sato-pillar-top">
+                  <span className="sato-pillar-num">{p.num}</span>
+                  <span className="sato-pillar-ic"><p.icon size={17} /></span>
+                </div>
+                <h3>{p.title}</h3>
+                <p>{p.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- SECTION 5: EDITORIAL FAQ (topology.vc / increase.com) ---------- */}
+      <section className="sato-band sato-band-paper sato-band-tight" id="faq">
+        <div className="sato-container sato-faq-grid">
+          <div className="sato-faq-side">
+            <span className="sato-eyebrow">BEFORE YOU JOIN</span>
+            <h2><RiseLines lines={["Clear answers", "build trust."]} /></h2>
+            <p className="sato-body">
+              Money products should be direct about what happens behind every button. Read our full architecture in the docs or reach the team directly.
+            </p>
+            <div className="sato-faq-actions">
+              <a className="sato-btn sato-btn-ink" href="mailto:team.satofinance@gmail.com">
+                Talk to us <Send size={14} />
+              </a>
+              <a className="sato-text-link" href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">
+                Read protocol docs <ArrowUpRight size={14} />
+              </a>
+            </div>
+          </div>
+
+          <div className="sato-acc">
+            {faqs.map((f, i) => {
+              const open = openFaq === i;
+              return (
+                <div className={open ? "sato-acc-item open" : "sato-acc-item"} key={f.q}>
+                  <button type="button" className="sato-acc-btn" aria-expanded={open} onClick={() => setOpenFaq(open ? null : i)}>
+                    <span className="sato-acc-q">
+                      <em>0{i + 1}</em>
+                      <span>{f.q}</span>
+                    </span>
+                    <span className="sato-acc-plus"><Plus size={15} /></span>
+                  </button>
+                  <div className="sato-acc-panel">
+                    <p>{f.a}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- SECTION 6: OBSIDIAN FINAL CTA ---------- */}
+      <section className="sato-band sato-band-paper sato-cta-band" id="get">
+        <div className="sato-container">
+          <div className="sato-cta-card beam-border" {...spotlight}>
+            <div className="sato-cta-glow" aria-hidden="true" />
+            <div className="sato-cta-inner">
+              <span className="sato-eyebrow on-dark">EARLY ACCESS · 2026</span>
+              <h2><RiseLines lines={["Be first in line."]} /></h2>
+              <p className="sato-body on-dark">
+                Join the waitlist for your region. One useful email when your invite opens — zero noise.
+              </p>
+
+              {ctaWait.submitted ? (
+                <div className="sato-cta-success">
+                  <span><Check size={15} /></span> You're on the list. We'll be in touch.
+                </div>
+              ) : (
+                <form className="sato-cta-form" onSubmit={ctaWait.submit}>
+                  <input
+                    type="text"
+                    name="company"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    aria-hidden="true"
+                    value={ctaWait.company}
+                    onChange={(e) => ctaWait.setCompany(e.target.value)}
+                    style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }}
+                  />
+                  <input
+                    type="email"
+                    required
+                    placeholder="you@example.com"
+                    value={ctaWait.email}
+                    onChange={(e) => ctaWait.setEmail(e.target.value)}
+                    aria-label="Email address"
+                  />
+                  <button className="sato-btn sato-btn-primary" type="submit" disabled={ctaWait.sending}>
+                    {ctaWait.sending ? "Joining…" : <>Join waitlist <ArrowRight size={15} /></>}
+                  </button>
+                </form>
+              )}
+
+              <div className="sato-cta-note">
+                {ctaWait.error || "BUILT ON BITCOIN · POWERED BY STACKS · NON-CUSTODIAL PREVIEW"}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- FOOTER ---------- */}
+      <footer className="sato-footer">
+        <div className="sato-container">
+          <div className="sato-foot-grid">
+            <div className="sato-foot-brand">
+              <a className="sato-brand dark-text" href="#top">
+                <span className="sato-brand-mark"><img src={logoSrc} alt="" /></span>
+                <span className="sato-brand-word">sato</span>
+              </a>
+              <p>Sato is in active testnet preview. Screens and yield figures shown are illustrative and subject to change before mainnet launch.</p>
+            </div>
+
+            <div className="sato-foot-col">
+              <span>Product</span>
+              <a href="#how">Send</a>
+              <a href="#why">Earn</a>
+              <a href="#how">Cash out</a>
+              <a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
+            </div>
+
+            <div className="sato-foot-col">
+              <span>Company</span>
+              <Link href="/people">For people</Link>
+              <Link href="/businesses">For businesses</Link>
+              <a href="https://testnet.satoxbt.com/app" target="_blank" rel="noopener noreferrer">Testnet app</a>
+              <a href="mailto:team.satofinance@gmail.com">Contact</a>
+            </div>
+
+            <div className="sato-foot-col">
+              <span>Legal & Trust</span>
+              <Link href="/privacy">Privacy Policy</Link>
+              <Link href="/terms">Terms of Service</Link>
+              <Link href="/security">Security</Link>
+            </div>
+
+            <div className="sato-news">
+              <span className="sato-news-label">STAY IN THE LOOP</span>
+              <p>Launch updates for your region. Unsubscribe anytime.</p>
+              {newsWait.submitted ? (
+                <div className="sato-news-done"><Check size={14} /> Subscribed.</div>
+              ) : (
+                <form className="sato-news-form" onSubmit={newsWait.submit}>
+                  <input
+                    type="email"
+                    required
+                    placeholder="you@example.com"
+                    value={newsWait.email}
+                    onChange={(e) => newsWait.setEmail(e.target.value)}
+                    aria-label="Email for newsletter"
+                  />
+                  <button type="submit" disabled={newsWait.sending}>{newsWait.sending ? "…" : "Join"}</button>
+                </form>
               )}
             </div>
           </div>
-          <div className="iris-col-stack">
-            <div className={`iris-card iris-reveal ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...tilt}>
-              <div className="iris-card-top">
-                <span className="iris-tag">Clarity</span>
-                <span className="iris-ic"><Receipt size={17} /></span>
-              </div>
-              <h3>Costs before confirm.</h3>
-              <p>Fee, rate lock, arrival window. Nothing buried behind the button.</p>
-              <div className="iris-micro-ledger">
-                <div><span>NETWORK FEE</span><strong>$0.40 · Sponsored</strong></div>
-                <div><span>RATE LOCK</span><strong className="ok">00:30 Guaranteed</strong></div>
-              </div>
-            </div>
-            <div className={`iris-card iris-reveal ${bentoFilter !== "all" && bentoFilter !== "send" ? "dimmed" : ""}`} {...tilt}>
-              <div className="iris-card-top">
-                <span className="iris-tag">Receipts</span>
-                <span className="iris-ic"><Check size={17} /></span>
-              </div>
-              <h3>Both sides see done.</h3>
-              <p>Sender and merchant share one verifiable settlement proof.</p>
-              <div className="iris-proof-strip">
-                <span className="iris-proof-party"><i>✓</i> @you</span>
-                <span className="iris-proof-line" />
-                <span className="iris-proof-hash">TX #8F4A · SETTLED</span>
-                <span className="iris-proof-line" />
-                <span className="iris-proof-party"><i>✓</i> @cafe</span>
-              </div>
-            </div>
-          </div>
-          <div className={`iris-card black tall iris-reveal ${bentoFilter !== "all" && bentoFilter !== "earn" ? "dimmed" : ""}`} {...tilt}>
-            <div className="iris-card-top">
-              <span className="iris-tag">Earn · Preview</span>
-              <span className="iris-ic"><PiggyBank size={17} /></span>
-            </div>
-            <h3>Balance that works while it sits.</h3>
-            <p>No second account or lockup maze. Watch it accrue in real time — live mechanics published at launch.</p>
-            <div className="iris-card-mock iris-earn-box">
-              <div className="iris-earn-meta">
-                <span>LIVE ACCRUAL PREVIEW</span>
-                <span className="iris-apy-pill">+4.8% APY · sBTC</span>
-              </div>
-              <div className="iris-earn-num">${earnBal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              <div className="iris-earn-bar"><i /></div>
-              <div className="iris-earn-foot">
-                <span>0.03812 sBTC principal</span>
-                <span>+$3.12 earned this week</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="iris-bento-bottom">
-          <div className={`iris-card iris-card-row iris-reveal ${bentoFilter !== "all" && bentoFilter !== "cashout" ? "dimmed" : ""}`} {...tilt}>
-            <span className="iris-ic"><Banknote size={18} /></span>
-            <div className="iris-card-row-copy">
-              <div className="iris-card-row-head">
-                <span className="iris-tag">Cash out</span>
-                <span className="iris-rail-pill">NGN · USD · BANK RAILS</span>
-              </div>
-              <h3>Back to your bank.</h3>
-              <p>Local currency settlement with stated timing and HMAC-verified quotes, on your terms.</p>
-            </div>
-          </div>
-          <div className={`iris-card iris-card-row iris-reveal ${bentoFilter !== "all" && bentoFilter !== "cashout" ? "dimmed" : ""}`} {...tilt}>
-            <span className="iris-ic"><ShieldCheck size={18} /></span>
-            <div className="iris-card-row-copy">
-              <div className="iris-card-row-head">
-                <span className="iris-tag">Foundation</span>
-                <span className="iris-rail-pill">STACKS L2 · sBTC · SIP-010</span>
-              </div>
-              <h3>Built on Bitcoin.</h3>
-              <p>Non-custodial Clarity smart contracts with gasless sponsored co-signing and visible status.</p>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* ---------- trust strip ---------- */}
-      <div className="iris-trust-wrap iris-reveal">
-        <div className="iris-trust">
-          <span className="iris-trust-label">Built with care</span>
-          <div className="iris-trust-badges">
-            <span className="iris-trust-badge ok"><ShieldCheck size={14} /> Non-custodial</span>
-            <span className="iris-trust-badge"><Bitcoin size={14} /> sBTC · Stacks testnet</span>
-            <span className="iris-trust-badge"><Receipt size={14} /> Fees shown before confirm</span>
-            <span className="iris-trust-badge ok"><Check size={14} /> Receipts for both sides</span>
+          <div className="sato-foot-bottom">
+            <span>© 2026 Sato. Built on Bitcoin.</span>
+            <div className="sato-foot-legal">
+              <a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
+              <i>·</i>
+              <Link href="/privacy">Privacy Policy</Link>
+              <i>·</i>
+              <Link href="/terms">Terms of Service</Link>
+              <i>·</i>
+              <Link href="/security">Security</Link>
+            </div>
+            <a href="#top" className="sato-back-top">Back to top ↑</a>
           </div>
         </div>
-      </div>
 
-      {/* ---------- faq ---------- */}
-      <section className="iris-section iris-faq" id="faq">
-        <div className="iris-faq-left iris-reveal">
-          <span className="iris-eyebrow"><ShieldCheck size={13} /> Before you join</span>
-          <h2><RiseLines lines={["Clear answers", "build trust."]} /></h2>
-          <p className="iris-body">Money products should be direct about what happens behind the button. Here's what we can say now — and what we'll publish before launch.</p>
-          <a className="iris-talk" href="mailto:team.satofinance@gmail.com"><Send size={14} /> Talk to us</a>
-        </div>
-        <div className="iris-acc iris-reveal">
-          {faqs.map((f, i) => {
-            const open = openFaq === i;
-            return (
-              <div className={open ? "iris-acc-item open" : "iris-acc-item"} key={f.q}>
-                <button className="iris-acc-btn" aria-expanded={open} onClick={() => setOpenFaq(open ? null : i)}>
-                  <span className="iris-acc-q">
-                    <em className="iris-acc-num">0{i + 1}</em>
-                    <span>{f.q}</span>
-                  </span>
-                  <span className="iris-plus"><Plus size={15} /></span>
-                </button>
-                <div className="iris-acc-panel"><p>{f.a}</p></div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ---------- cta band ---------- */}
-      <div className="iris-cta-wrap" id="get">
-        <div
-          className="iris-cta-card iris-reveal"
-          onMouseMove={(e) => {
-            const el = e.currentTarget;
-            const r = el.getBoundingClientRect();
-            el.style.setProperty("--gx", `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`);
-            el.style.setProperty("--gy", `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%`);
-          }}
-        >
-          <div className="iris-clouds" aria-hidden="true">
-            <i className="iris-cloud c1" /><i className="iris-cloud c2" />
-          </div>
-          <div style={{ position: "relative", zIndex: 2 }}>
-            <span className="iris-eyebrow on-sky"><Sparkles size={13} /> Early access</span>
-            <h2><RiseLines lines={["Be first in line."]} /></h2>
-            <p className="iris-hero-sub">Join the list for your region. One useful email when<br />your invite is ready — nothing else.</p>
-            {ctaWait.submitted ? (
-              <span className="iris-success"><i><Check size={16} /></i> You're on the list. We'll be in touch.</span>
-            ) : (
-              <form className="iris-cta-form" onSubmit={ctaWait.submit}>
-                <input type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" value={ctaWait.company} onChange={(e) => ctaWait.setCompany(e.target.value)} style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }} />
-                <input type="email" required placeholder="you@example.com" value={ctaWait.email} onChange={(e) => ctaWait.setEmail(e.target.value)} aria-label="Email address" />
-                <button className="iris-btn iris-btn-dark" type="submit" disabled={ctaWait.sending} style={{ padding: "13px 24px" }}>
-                  {ctaWait.sending ? "Joining…" : <>Join <ArrowRight size={15} /></>}
-                </button>
-              </form>
-            )}
-            <div className="iris-cta-note">{ctaWait.error || "Built on Bitcoin · Powered by Stacks · Preview — features subject to change"}</div>
-            <div style={{ display: heroWait.submitted ? "none" : "block", marginTop: 6 }} />
-          </div>
-        </div>
-      </div>
-
-      {/* ---------- footer ---------- */}
-      <footer className="iris-footer">
-        <div className="iris-foot-grid">
-          <div className="iris-foot-brand">
-            <a className="iris-nav-brand" href="#top" style={{ border: 0, padding: 0 }}>
-              <span className="iris-nav-mark"><img src={logoSrc} alt="" /></span><span className="iris-nav-word">sato</span>
-            </a>
-            <p>Sato is in preview. Screens and numbers shown are illustrative and subject to change before launch.</p>
-          </div>
-          <div className="iris-foot-col">
-            <span>Product</span>
-            <a href="#how">Send</a>
-            <a href="#how">Earn</a>
-            <a href="#how">Cash out</a>
-            <a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
-          </div>
-          <div className="iris-foot-col">
-            <span>Company</span>
-            <Link href="/people">For people</Link>
-            <Link href="/businesses">For businesses</Link>
-            <a href="https://testnet.satoxbt.com/app" target="_blank" rel="noopener noreferrer">Testnet app</a>
-            <a href="mailto:team.satofinance@gmail.com">Contact</a>
-          </div>
-          <div className="iris-foot-col">
-            <span>Legal & Trust</span>
-            <Link href="/privacy">Privacy Policy</Link>
-            <Link href="/terms">Terms of Service</Link>
-            <Link href="/security">Security</Link>
-          </div>
-          <div className="iris-news">
-            <div className="iris-foot-col" style={{ marginBottom: 12 }}><span>Stay in the loop</span></div>
-            <p>Launch updates for your region. No noise, unsubscribe anytime.</p>
-            {newsWait.submitted ? (
-              <span className="iris-success" style={{ boxShadow: "none", border: "1px solid #e2e0d9" }}><i><Check size={16} /></i> Subscribed.</span>
-            ) : (
-              <form className="iris-news-form" onSubmit={newsWait.submit}>
-                <input type="email" required placeholder="you@example.com" value={newsWait.email} onChange={(e) => newsWait.setEmail(e.target.value)} aria-label="Email for newsletter" />
-                <button type="submit" disabled={newsWait.sending}>{newsWait.sending ? "…" : "Subscribe"}</button>
-              </form>
-            )}
-          </div>
-        </div>
-        <div className="iris-foot-bottom">
-          <span>© 2026 Sato. Built on Bitcoin.</span>
-          <div className="iris-foot-legal">
-            <a href="https://docs.satoxbt.com" target="_blank" rel="noopener noreferrer">Docs</a>
-            <span className="dot">·</span>
-            <Link href="/privacy">Privacy Policy</Link>
-            <span className="dot">·</span>
-            <Link href="/terms">Terms of Service</Link>
-            <span className="dot">·</span>
-            <Link href="/security">Security</Link>
-          </div>
-          <a href="#top" style={{ color: "inherit" }}>Back to top ↑</a>
-        </div>
-        <div className="iris-wordmark iris-reveal" aria-hidden="true">sato</div>
+        <div className="sato-wordmark" aria-hidden="true">sato</div>
       </footer>
     </div>
   );
