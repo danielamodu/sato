@@ -23,9 +23,15 @@
 // Testnet default: funds aren't real, so the stubbed payout is intended.
 
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+import {
+  claimTreasuryTxid,
+  normalizeTxid,
+  verifyPayerSignature,
+  type ApiHeaders,
+} from "./_lib";
 
 // Vercel serverless signature (inline — api/ isn't part of the client tsconfig).
-type Request = { method?: string; body?: Record<string, any> };
+type Request = { method?: string; body?: Record<string, any>; headers?: ApiHeaders };
 type Response = {
   status: (code: number) => Response;
   json: (body: unknown) => void;
@@ -43,9 +49,16 @@ const HIRO = "https://api.testnet.hiro.so";
 // missing, account resolution + the payout leg are stubbed (testnet).
 const PAYOUT_BASE = process.env.PAYOUT_BASE_URL || "https://api.paystack.co";
 const PAYOUT_SECRET = process.env.PAYOUT_SECRET_KEY || "";
-// Signs quotes. Falls back so there's one less env to set on testnet.
-const SIGNING_SECRET =
-  process.env.OFFRAMP_SIGNING_SECRET || process.env.PAY_SIGNING_SECRET || PAYOUT_SECRET || "dev-offramp-secret";
+
+// Signs quotes. Fail closed when unconfigured (no hardcoded fallback secret).
+function getSigningSecret(): string {
+  return (
+    process.env.OFFRAMP_SIGNING_SECRET ||
+    process.env.PAY_SIGNING_SECRET ||
+    process.env.PAYOUT_SECRET_KEY ||
+    ""
+  );
+}
 
 // Offramp spread (bps) taken off spot — the naira you receive is priced a
 // little worse than mid to cover FX/settlement + provider fees.
@@ -55,12 +68,9 @@ const MAX_NGN = 500_000;
 // How long a signed quote stays fulfillable (rate lock + confirmation window).
 const QUOTE_TTL_MS = 20 * 60 * 1000;
 
-const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-
 // --- signed quote --------------------------------------------------------
 
-interface Quote {
+export interface Quote {
   amountNgn: number; // naira the user receives in-bank
   sats: string; // sats the user must send to the treasury
   treasury: string;
@@ -68,16 +78,29 @@ interface Quote {
 }
 
 // rate isn't signed (display only); the sats↔naira commitment is amountNgn+sats.
-function signQuote(q: Quote): string {
+export function signQuote(q: Quote): string {
+  const secret = getSigningSecret();
+  if (!secret) throw new Error("Signing secret not configured.");
   const msg = [q.amountNgn, q.sats, q.treasury, q.exp].join("|");
-  return createHmac("sha256", SIGNING_SECRET).update(msg).digest("hex");
+  return createHmac("sha256", secret).update(msg).digest("hex");
 }
 
-function quoteValid(q: Quote, sig: string): boolean {
-  if (!SIGNING_SECRET || !sig) return false;
+export function quoteValid(q: Quote, sig: string): boolean {
+  const secret = getSigningSecret();
+  if (!secret || !sig) return false;
   const good = Buffer.from(signQuote(q), "utf8");
   const got = Buffer.from(String(sig), "utf8");
   return good.length === got.length && timingSafeEqual(good, got);
+}
+
+// Message the paying wallet signs to bind an on-chain txid to a specific bank
+// account, preventing front-running of unauthenticated cash-outs.
+export function offrampAuthMessage(args: {
+  txid: string;
+  bankCode: string;
+  accountNumber: string;
+}): string {
+  return `sato:offramp:${args.txid}:${args.bankCode}:${args.accountNumber}`;
 }
 
 // --- live rate -----------------------------------------------------------
@@ -97,7 +120,7 @@ async function btcNgn(): Promise<number> {
 
 // Naira -> sats at `rate`, plus the spread, rounded up (payer covers the edge
 // so they pay slightly more sats for the naira they receive).
-function ngnToSats(amountNgn: number, rate: number): number {
+export function ngnToSats(amountNgn: number, rate: number): number {
   const base = Math.ceil((amountNgn / rate) * 1e8);
   return Math.ceil((base * (10000 + SPREAD_BPS)) / 10000);
 }
@@ -150,37 +173,9 @@ async function verifyPayment(txid: string, minSats: bigint): Promise<PayCheck> {
 
 // --- idempotency ---------------------------------------------------------
 
-async function redis(cmd: (string | number)[]): Promise<any> {
-  const resp = await fetch(UPSTASH_URL as string, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(cmd),
-  });
-  if (!resp.ok) throw new Error(`upstash ${resp.status}`);
-  return ((await resp.json()) as { result?: unknown }).result ?? null;
-}
-
-const memTxids = new Set<string>();
-
-// Claim a txid exactly once. Returns true if THIS call won the claim (proceed
-// to pay out), false if it was already claimed (a duplicate/concurrent submit).
-async function claimTxid(txid: string): Promise<boolean> {
-  const key = `sato:offramp:txid:${txid}`;
-  if (UPSTASH_URL && UPSTASH_TOKEN) {
-    try {
-      return (await redis(["SET", key, "1", "NX", "EX", 2_592_000])) === "OK";
-    } catch {
-      /* store hiccup — fall back to best-effort memory */
-    }
-  }
-  if (memTxids.has(key)) return false;
-  memTxids.add(key);
-  return true;
-}
-
-// A deterministic payout reference from the paying txid, so retries of the same
-// order carry the same reference (the provider can dedupe on it).
-function referenceFor(txid: string): string {
+// A deterministic payout reference from the normalized paying txid, so retries
+// of the same order carry the same reference (the provider can dedupe on it).
+export function referenceFor(txid: string): string {
   return "SATO-OFR-" + createHash("sha256").update(txid).digest("hex").slice(0, 16);
 }
 
@@ -314,6 +309,7 @@ export default async function handler(req: Request, res: Response) {
 
   // Price a naira cash-out in sats and sign the quote.
   if (action === "quote") {
+    if (!getSigningSecret()) return bad(res, 500, "Cash out isn't configured yet.");
     const amountNgn = Math.floor(Number(body.amountNgn));
     if (!Number.isFinite(amountNgn) || amountNgn < MIN_NGN)
       return bad(res, 400, `Minimum cash-out is ₦${MIN_NGN.toLocaleString()}.`);
@@ -333,6 +329,7 @@ export default async function handler(req: Request, res: Response) {
 
   // Fulfil a paid cash-out: verify the on-chain payment, then pay the bank.
   if (action === "submit") {
+    if (!getSigningSecret()) return bad(res, 500, "Cash out isn't configured yet.");
     const body_q = body.quote || {};
     const q: Quote = {
       amountNgn: Math.floor(Number(body_q.amountNgn)),
@@ -341,16 +338,16 @@ export default async function handler(req: Request, res: Response) {
       exp: Number(body_q.exp),
     };
     const sig = String(body.sig || "");
-    const txid = String(body.txid || "").trim();
+    const txid = normalizeTxid(body.txid);
     const bankCode = String(body.bankCode || "");
     const accountNumber = String(body.accountNumber || "");
     const accountName = String(body.accountName || "").trim();
+    const payerSig = typeof body.payerSig === "string" ? body.payerSig : "";
 
     if (!quoteValid(q, sig)) return bad(res, 400, "Quote signature invalid.");
     if (Date.now() > q.exp) return bad(res, 400, "Quote expired — get a fresh one.");
     if (q.treasury !== TREASURY) return bad(res, 400, "Quote is for a different treasury.");
-    if (!/^0x?[0-9a-fA-F]{64}$/.test(txid) && !/^[0-9a-fA-F]{64}$/.test(txid))
-      return bad(res, 400, "Missing or malformed transaction id.");
+    if (!txid) return bad(res, 400, "Missing or malformed transaction id.");
     if (!BANKS.some((b) => b.code === bankCode)) return bad(res, 400, "Unknown bank.");
     if (!ACCT_RE.test(accountNumber)) return bad(res, 400, "Enter a 10-digit account number.");
     if (!accountName) return bad(res, 400, "Missing account name.");
@@ -368,13 +365,34 @@ export default async function handler(req: Request, res: Response) {
       return res.status(check.pending ? 202 : 400).json({ error: check.error });
     }
 
-    // One payout per txid. If the claim is lost, it's already been handled.
-    if (!(await claimTxid(txid)))
+    // Verify the paying wallet signed this exact bank destination so an observer
+    // cannot hijack a confirmed txid to their own account.
+    if (
+      !verifyPayerSignature({
+        message: offrampAuthMessage({ txid, bankCode, accountNumber }),
+        signature: payerSig,
+        expectedAddress: check.sender,
+        network: "testnet",
+      })
+    ) {
+      return bad(res, 403, "Payer signature invalid — authorize this cash-out from the paying wallet.");
+    }
+
+    // One payout per txid across ALL treasury endpoints. Require durable Redis
+    // whenever a live PAYOUT_SECRET_KEY is configured.
+    const claim = await claimTreasuryTxid(txid, {
+      requireDurable: Boolean(process.env.PAYOUT_SECRET_KEY),
+    });
+    if (!claim.ok) {
+      if (claim.reason === "store_unavailable") {
+        return bad(res, 503, "Idempotency store unavailable — try again shortly.");
+      }
       return res.status(200).json({
         status: "processing",
         detail: "This payment was already cashed out.",
         reference: referenceFor(txid),
       });
+    }
 
     const reference = referenceFor(txid);
     const result = await payout({

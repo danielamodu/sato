@@ -13,10 +13,12 @@
 //   - a honeypot field silently absorbs naive bots,
 //   - a per-IP rate limit (durable when Upstash is configured) caps abuse.
 
+import { clientIp, rateLimit, type ApiHeaders } from "./_lib";
+
 type Request = {
   method?: string;
   body?: { email?: string; audience?: string; company?: string };
-  headers?: Record<string, string | string[] | undefined>;
+  headers?: ApiHeaders;
 };
 
 type Response = {
@@ -36,8 +38,6 @@ const MAX_EMAIL_LENGTH = 254; // RFC 5321 maximum forward-path length
 // across instances (same pattern as api/sponsor.ts). Tunable via env.
 const WINDOW_SECONDS = Number(process.env.WAITLIST_WINDOW_SECONDS) || 3600;
 const MAX_PER_WINDOW = Number(process.env.WAITLIST_MAX_PER_WINDOW) || 8;
-const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 // Escape the five HTML-significant characters so a crafted address can't inject
 // markup into the emails anyone opens.
@@ -50,54 +50,10 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-// Best-effort per-instance fallback when no durable store is configured.
-const memHits = new Map<string, { n: number; resetAt: number }>();
-function memIncr(key: string): number {
-  const now = Date.now();
-  const e = memHits.get(key);
-  if (!e || e.resetAt <= now) {
-    memHits.set(key, { n: 1, resetAt: now + WINDOW_SECONDS * 1000 });
-    return 1;
-  }
-  e.n += 1;
-  return e.n;
-}
-
-async function redis(cmd: (string | number)[]): Promise<number> {
-  const resp = await fetch(UPSTASH_URL as string, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(cmd),
-  });
-  if (!resp.ok) throw new Error(`upstash ${resp.status}`);
-  const data = (await resp.json()) as { result?: number };
-  return Number(data.result ?? 0);
-}
-
 // Count this attempt against the caller's IP window. Incr-first so bursts can't
-// race past the cap; degrades to the in-memory counter if the store hiccups.
+// race past the cap; degrades to the in-memory counter unless Redis is required.
 async function overRateLimit(ip: string): Promise<boolean> {
-  const key = `sato:waitlist:rl:${ip}`;
-  let used: number;
-  if (UPSTASH_URL && UPSTASH_TOKEN) {
-    try {
-      used = await redis(["INCR", key]);
-      if (used === 1) await redis(["EXPIRE", key, WINDOW_SECONDS]);
-    } catch {
-      used = memIncr(key);
-    }
-  } else {
-    used = memIncr(key);
-  }
-  return used > MAX_PER_WINDOW;
-}
-
-function clientIp(req: Request): string {
-  const fwd = req.headers?.["x-forwarded-for"];
-  const first = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0]?.trim();
-  if (first) return first;
-  const real = req.headers?.["x-real-ip"];
-  return (Array.isArray(real) ? real[0] : real) || "unknown";
+  return rateLimit("waitlist:rl", ip, MAX_PER_WINDOW, WINDOW_SECONDS);
 }
 
 type EmailPayload = {
@@ -153,8 +109,12 @@ export default async function handler(req: Request, res: Response) {
   }
 
   // Cap how often one IP can spend our email quota / fill the owner's inbox.
-  if (await overRateLimit(clientIp(req))) {
-    return res.status(429).json({ error: "Too many signups from here. Please try again later." });
+  try {
+    if (await overRateLimit(clientIp(req))) {
+      return res.status(429).json({ error: "Too many signups from here. Please try again later." });
+    }
+  } catch {
+    return res.status(503).json({ error: "Rate limit store unavailable — try again shortly." });
   }
 
   const apiKey = process.env.RESEND_API_KEY;

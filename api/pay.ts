@@ -20,9 +20,15 @@
 // requote/hedge for mainnet. Testnet + VTPass sandbox by default.
 
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+import {
+  claimTreasuryTxid,
+  normalizeTxid,
+  verifyPayerSignature,
+  type ApiHeaders,
+} from "./_lib";
 
 // Vercel serverless signature (inline — api/ isn't part of the client tsconfig).
-type Request = { method?: string; body?: Record<string, any> };
+type Request = { method?: string; body?: Record<string, any>; headers?: ApiHeaders };
 type Response = {
   status: (code: number) => Response;
   json: (body: unknown) => void;
@@ -40,8 +46,11 @@ const HIRO = "https://api.testnet.hiro.so";
 const VTPASS_BASE = process.env.VTPASS_BASE_URL || "https://sandbox.vtpass.com/api";
 const VTPASS_API_KEY = process.env.VTPASS_API_KEY || "";
 const VTPASS_SECRET_KEY = process.env.VTPASS_SECRET_KEY || "";
-// Signs quotes. Falls back to the VTPass secret so there's one less env to set.
-const SIGNING_SECRET = process.env.PAY_SIGNING_SECRET || VTPASS_SECRET_KEY;
+
+// Read dynamically so tests and runtime env updates don't freeze an empty string.
+function getSigningSecret(): string {
+  return process.env.PAY_SIGNING_SECRET || process.env.VTPASS_SECRET_KEY || "";
+}
 
 // Spread added over spot to cover the FX/settlement window (basis points).
 const SPREAD_BPS = Number(process.env.PAY_SPREAD_BPS) || 150;
@@ -81,12 +90,9 @@ function billerId(service: string, token: string): string | null {
   return BILLERS[service as Category]?.[token] ?? null;
 }
 
-const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-
 // --- signed quote --------------------------------------------------------
 
-interface Quote {
+export interface Quote {
   service: Category;
   serviceID: string; // friendly biller token within the category
   variation_code: string; // data/cable plan, or electricity meter type; "" for airtime
@@ -96,16 +102,31 @@ interface Quote {
   exp: number; // ms epoch after which the quote is stale
 }
 
-function signQuote(q: Quote): string {
+export function signQuote(q: Quote): string {
+  const secret = getSigningSecret();
+  if (!secret) throw new Error("Signing secret not configured.");
   const msg = [q.service, q.serviceID, q.variation_code, q.amountNgn, q.sats, q.treasury, q.exp].join("|");
-  return createHmac("sha256", SIGNING_SECRET).update(msg).digest("hex");
+  return createHmac("sha256", secret).update(msg).digest("hex");
 }
 
-function quoteValid(q: Quote, sig: string): boolean {
-  if (!SIGNING_SECRET || !sig) return false;
+export function quoteValid(q: Quote, sig: string): boolean {
+  const secret = getSigningSecret();
+  if (!secret || !sig) return false;
   const good = Buffer.from(signQuote(q), "utf8");
   const got = Buffer.from(String(sig), "utf8");
   return good.length === got.length && timingSafeEqual(good, got);
+}
+
+// Message the paying wallet signs to bind an on-chain txid to a specific
+// utility recipient, preventing third-party front-running of unauthenticated submits.
+export function payAuthMessage(args: {
+  txid: string;
+  service: string;
+  serviceID: string;
+  phone: string;
+  billersCode: string;
+}): string {
+  return `sato:pay:${args.txid}:${args.service}:${args.serviceID}:${args.phone}:${args.billersCode}`;
 }
 
 // --- live rate -----------------------------------------------------------
@@ -124,7 +145,7 @@ async function btcNgn(): Promise<number> {
 }
 
 // Naira -> sats at `rate`, plus the spread, rounded up (payer covers the edge).
-function ngnToSats(amountNgn: number, rate: number): number {
+export function ngnToSats(amountNgn: number, rate: number): number {
   const base = Math.ceil((amountNgn / rate) * 1e8);
   return Math.ceil((base * (10000 + SPREAD_BPS)) / 10000);
 }
@@ -177,39 +198,10 @@ async function verifyPayment(txid: string, minSats: bigint): Promise<PayCheck> {
 
 // --- idempotency ---------------------------------------------------------
 
-// One Upstash REST command; returns the raw result. Throws on non-2xx.
-async function redis(cmd: (string | number)[]): Promise<any> {
-  const resp = await fetch(UPSTASH_URL as string, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(cmd),
-  });
-  if (!resp.ok) throw new Error(`upstash ${resp.status}`);
-  return ((await resp.json()) as { result?: unknown }).result ?? null;
-}
-
-const memTxids = new Set<string>();
-
-// Claim a txid exactly once. Returns true if THIS call won the claim (proceed
-// to fulfill), false if it was already claimed (a duplicate/concurrent submit).
-async function claimTxid(txid: string): Promise<boolean> {
-  const key = `sato:pay:txid:${txid}`;
-  if (UPSTASH_URL && UPSTASH_TOKEN) {
-    try {
-      return (await redis(["SET", key, "1", "NX", "EX", 2_592_000])) === "OK";
-    } catch {
-      /* store hiccup — fall back to best-effort memory */
-    }
-  }
-  if (memTxids.has(key)) return false;
-  memTxids.add(key);
-  return true;
-}
-
 // VTPass wants request_id prefixed with a GMT+1 datetime (YYYYMMDDHHmm). Derive
-// it from the confirming block time + a hash of the txid so it's identical on
-// every retry of the same order — which is exactly what makes VTPass dedupe it.
-function requestIdFor(txid: string, whenMs: number): string {
+// it from the confirming block time + a hash of the normalized txid so it's
+// identical on every retry of the same order — which is what makes VTPass dedupe it.
+export function requestIdFor(txid: string, whenMs: number): string {
   const d = new Date(whenMs + 60 * 60 * 1000); // GMT+1
   const p = (n: number) => String(n).padStart(2, "0");
   const stamp = `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}`;
@@ -284,7 +276,7 @@ async function verifyBillersCode(
 }
 
 // Normalise a VTPass pay/requery response to our order status.
-function readVtpass(res: any): { status: "delivered" | "processing" | "failed"; detail: string } {
+export function readVtpass(res: any): { status: "delivered" | "processing" | "failed"; detail: string } {
   const code = String(res?.code || "");
   const tstatus = String(res?.content?.transactions?.status || "");
   if (code === "000" && tstatus === "delivered") return { status: "delivered", detail: "Delivered" };
@@ -297,7 +289,7 @@ function readVtpass(res: any): { status: "delivered" | "processing" | "failed"; 
 export default async function handler(req: Request, res: Response) {
   res.setHeader("Content-Type", "application/json");
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-  if (!SIGNING_SECRET)
+  if (!getSigningSecret())
     return res.status(500).json({ error: "Pay bills isn't configured yet." });
 
   const action = String(req.body?.action || "");
@@ -402,17 +394,20 @@ export default async function handler(req: Request, res: Response) {
   if (action === "submit") {
     const q = req.body?.quote as Quote | undefined;
     const sig = String(req.body?.sig || "");
-    const txid = String(req.body?.txid || "").trim().replace(/^0x/, "");
+    const txid = normalizeTxid(req.body?.txid);
     const phone = String(req.body?.phone || "").trim();
+    const payerSig = typeof req.body?.payerSig === "string" ? req.body.payerSig : "";
     if (!q || !quoteValid(q, sig))
       return res.status(400).json({ error: "Invalid or tampered quote." });
     if (q.exp < Date.now())
       return res.status(410).json({ error: "Quote expired — get a fresh one." });
+    if (q.treasury !== TREASURY)
+      return res.status(400).json({ error: "Quote is for a different treasury." });
     const vt = billerId(q.service, q.serviceID);
     if (!vt) return res.status(400).json({ error: "Unknown biller." });
     if (!/^(0\d{10}|234\d{10})$/.test(phone))
       return res.status(400).json({ error: "Enter a valid phone number." });
-    if (!/^[0-9a-fA-F]{64}$/.test(txid))
+    if (!txid)
       return res.status(400).json({ error: "Missing payment reference." });
 
     // billersCode: the meter/smartcard to credit; data credits the phone, and
@@ -428,6 +423,29 @@ export default async function handler(req: Request, res: Response) {
         .status(check.pending ? 202 : 400)
         .json({ status: check.pending ? "pending" : "failed", error: check.error });
 
+    // Verify the paying wallet signed this exact bill destination so a mempool
+    // observer cannot hijack a confirmed payment txid before the user polls.
+    const boundBillersCode = q.service === "airtime" ? "" : billersCode;
+    if (
+      !verifyPayerSignature({
+        message: payAuthMessage({
+          txid,
+          service: q.service,
+          serviceID: q.serviceID,
+          phone,
+          billersCode: boundBillersCode,
+        }),
+        signature: payerSig,
+        expectedAddress: check.sender,
+        network: "testnet",
+      })
+    ) {
+      return res.status(403).json({
+        status: "failed",
+        error: "Payer signature invalid — authorize this order from the paying wallet.",
+      });
+    }
+
     const requestId = requestIdFor(txid, check.whenMs);
     // The pay body VTPass expects varies by category; build it from the signed
     // quote (never a client-echoed amount) plus the submit-time destination.
@@ -441,10 +459,13 @@ export default async function handler(req: Request, res: Response) {
     if (q.variation_code) payBody.variation_code = q.variation_code;
     if (q.service === "cable") payBody.subscription_type = "change";
 
-    // Only the winner of the one-shot claim calls /pay; a duplicate submit
-    // re-queries the original instead (also idempotent on requestId).
-    const won = await claimTxid(txid);
-    const raw = won
+    // Only the winner of the one-shot shared treasury claim calls /pay; a
+    // duplicate submit re-queries the original instead (also idempotent on requestId).
+    const claim = await claimTreasuryTxid(txid);
+    if (!claim.ok && claim.reason === "store_unavailable") {
+      return res.status(503).json({ status: "failed", error: "Idempotency store unavailable — try again shortly." });
+    }
+    const raw = claim.ok
       ? await vtPost("pay", payBody)
       : await vtPost("requery", { request_id: requestId });
     const out = readVtpass(raw);
