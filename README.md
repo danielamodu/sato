@@ -14,10 +14,11 @@
 
 <p align="center">
   <a href="#"><img src="https://img.shields.io/badge/clarity-Stacks-5546FF?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMkw0IDIwaDRsNC04IDQgOGg0TDEyIDJ6IiBmaWxsPSIjZmZmIi8+PC9zdmc+" alt="Clarity on Stacks" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/tests-99_passing-brightgreen" alt="Tests" /></a>
+  <a href="https://github.com/danielamodu/sato/actions/workflows/test.yml"><img src="https://img.shields.io/badge/tests-112_passing-brightgreen" alt="Tests" /></a>
   <a href="#"><img src="https://img.shields.io/badge/network-testnet_live-orange" alt="Testnet" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License" /></a>
   <a href="https://satoxbt.com"><img src="https://img.shields.io/badge/satoxbt.com-F15A24?logo=bitcoin&logoColor=white" alt="Website" /></a>
+  <a href="https://docs.satoxbt.com"><img src="https://img.shields.io/badge/docs-satoxbt.com-111925" alt="Docs" /></a>
 </p>
 
 <br />
@@ -107,7 +108,7 @@ All contracts are deployed and verified on **Stacks testnet**.
 - [x] `sato-transfer` — sBTC ledger (send, balances, events)
 - [x] `sato-names` — username registry (register, resolve, transfer)
 - [x] `sato-sponsor` — sponsored-tx pool with windowed per-user caps
-- [x] Full test suite (99 tests) + deployed & verified on testnet
+- [x] Full test suite (102 Clarity + 10 API security tests) + deployed & verified on testnet
 
 **Phase 2 — Product integration** &nbsp; ✅ shipped
 
@@ -127,7 +128,7 @@ All contracts are deployed and verified on **Stacks testnet**.
 
 ```bash
 pnpm install
-pnpm test          # 99 Clarity tests via Clarinet + Vitest
+pnpm test          # 102 Clarity tests + 10 API security tests
 pnpm dev           # web dapp on localhost
 ```
 
